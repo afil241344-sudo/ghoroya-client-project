@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Customer orders placed on the Lachcha Shemai landing page",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerAddress": { "type": "string" },
+        "deliveryArea": { "type": "string", "enum": ["dhaka", "outside_dhaka"] },
+        "note": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["cod", "bkash"] },
+        "bkashTxId": { "type": "string" },
+        "bundleId": { "type": "string" },
+        "bundleName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "itemSubtotal": { "type": "number" },
+        "deliveryCharge": { "type": "number" },
+        "discount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "processing", "shipped", "delivered", "cancelled"] },
+        "courierName": { "type": "string" },
+        "courierTrackingCode": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "customerName", "customerPhone", "customerAddress", "totalAmount", "status", "createdAt"]
+    },
+    "Combo": {
+      "title": "Combo",
+      "description": "Combo bundles and promotional offers (e.g. 1-Box Trial, 2-Box Family Pack, 4-Box Grand Combo)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "weight": { "type": "string" },
+        "boxes": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "savings": { "type": "number" },
+        "stockCount": { "type": "number" },
+        "inStock": { "type": "boolean" },
+        "popular": { "type": "boolean" },
+        "freeDelivery": { "type": "boolean" },
+        "badge": { "type": "string" },
+        "description": { "type": "string" },
+        "includedProductIds": { "type": "string" }
+      },
+      "required": ["name", "salePrice", "stockCount", "inStock"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Individual inventory products catalog (e.g. Shahi Ghee Lachcha Shemai Box, Pure Cow Ghee Jar, Premium Saffron-Nut Mix)",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "sku": { "type": "string" },
+        "category": { "type": "string" },
+        "unitWeight": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "regularPrice": { "type": "number" },
+        "stockQuantity": { "type": "number" },
+        "inStock": { "type": "boolean" },
+        "description": { "type": "string" }
+      },
+      "required": ["name", "sku", "regularPrice", "stockQuantity", "inStock"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "All customer placed orders"
+    },
+    "/combos/{comboId}": {
+      "schema": "Combo",
+      "description": "Managed combo packages and bundle offers"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Base individual products and raw inventory"
+    }
+  }
+}
