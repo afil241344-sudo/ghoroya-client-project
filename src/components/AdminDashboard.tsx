@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Package,
   ShoppingBag,
@@ -27,12 +27,12 @@ import {
   AlertCircle,
   Check,
 } from 'lucide-react';
+import ImageUploadField from './ImageUploadField';
 import {
   fetchAllOrders,
   subscribeToOrders,
   updateOrderStatus,
   deleteOrder,
-  fetchCombos,
   seedInitialCombosIfEmpty,
   updateCombo,
   fetchAllProducts,
@@ -44,6 +44,8 @@ import {
   BackendCombo,
   ProductItem,
 } from '../services/dbService';
+import { uploadCatalogImage } from '../services/imageUpload';
+import { getSupabaseClient } from '../lib/supabase';
 
 interface AdminDashboardProps {
   onNavigateToStore: () => void;
@@ -52,12 +54,11 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDashboardProps) {
   const handleBackToStore = onNavigateToStore || onClose;
-  const pinInputId = useId();
-
-  // Simple admin PIN security (default '1234' or 'admin')
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Tab State: 'orders' | 'combos' | 'products'
   const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products'>('orders');
@@ -77,6 +78,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [editingCombo, setEditingCombo] = useState<BackendCombo | null>(null);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [comboImageFile, setComboImageFile] = useState<File | null>(null);
+  const [newProductImageFile, setNewProductImageFile] = useState<File | null>(null);
+  const [editingProductImageFile, setEditingProductImageFile] = useState<File | null>(null);
+  const [isSavingCatalogItem, setIsSavingCatalogItem] = useState(false);
   const [newProductForm, setNewProductForm] = useState<Omit<ProductItem, 'id'>>({
     name: '',
     sku: '',
@@ -110,6 +115,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setProductsList(fetchedProducts);
     } catch (err) {
       console.error('Error fetching admin data:', err);
+      showToast(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -117,10 +123,28 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   useEffect(() => {
-    const savedAuth = sessionStorage.getItem('shemai_admin_auth');
-    if (savedAuth === 'true') {
-      setIsAuthenticated(true);
+    let subscription: { unsubscribe: () => void } | undefined;
+    try {
+      const supabase = getSupabaseClient();
+      supabase.auth.getSession().then(({ data, error }) => {
+        if (error) {
+          setAuthError(error.message);
+          return;
+        }
+        setIsAuthenticated(data.session?.user.app_metadata.role === 'admin');
+      }).catch((error: unknown) => {
+        setAuthError(error instanceof Error ? error.message : 'Supabase session load failed.');
+      });
+
+      const authState = supabase.auth.onAuthStateChange((_event, session) => {
+        setIsAuthenticated(session?.user.app_metadata.role === 'admin');
+      });
+      subscription = authState.data.subscription;
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Supabase is not configured.');
     }
+
+    return () => subscription?.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -134,11 +158,20 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setCombos(cList);
       setProductsList(pList);
       setIsLoading(false);
+    }).catch((error: unknown) => {
+      console.error('Could not load catalog data from Supabase:', error);
+      showToast(error instanceof Error ? error.message : 'ক্যাটালগ ডেটা লোড করা যায়নি');
+      setIsLoading(false);
     });
 
-    // Real-time Firestore subscription for orders
+    // Real-time Supabase subscription for orders
     const unsubscribe = subscribeToOrders((liveOrders) => {
       setOrders(liveOrders);
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }, (error) => {
+      console.error('Supabase orders subscription failed:', error);
+      showToast(error.message);
       setIsLoading(false);
       setIsRefreshing(false);
     });
@@ -148,14 +181,25 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     };
   }, [isAuthenticated]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinInput === '1234' || pinInput === 'admin') {
+    setAuthError(null);
+    setIsAuthenticating(true);
+    try {
+      const { data, error } = await getSupabaseClient().auth.signInWithPassword({
+        email: adminEmail,
+        password: adminPassword,
+      });
+      if (error) throw error;
+      if (data.user.app_metadata.role !== 'admin') {
+        await getSupabaseClient().auth.signOut();
+        throw new Error('এই অ্যাকাউন্টে অ্যাডমিন অনুমতি নেই।');
+      }
       setIsAuthenticated(true);
-      sessionStorage.setItem('shemai_admin_auth', 'true');
-      setPinError(false);
-    } else {
-      setPinError(true);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'লগইন করা যায়নি।');
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
@@ -214,19 +258,33 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     e.preventDefault();
     if (!editingCombo) return;
 
-    await updateCombo(editingCombo.id, {
-      salePrice: Number(editingCombo.salePrice),
-      originalPrice: Number(editingCombo.originalPrice),
-      stockCount: Number(editingCombo.stockCount),
-      inStock: editingCombo.inStock,
-      includedProductIds: editingCombo.includedProductIds,
-    });
+    setIsSavingCatalogItem(true);
+    try {
+      const imageUrl = comboImageFile
+        ? await uploadCatalogImage(comboImageFile, 'combos', editingCombo.id)
+        : editingCombo.imageUrl;
+      const updatedCombo = { ...editingCombo, imageUrl };
+      await updateCombo(editingCombo.id, {
+        salePrice: Number(editingCombo.salePrice),
+        originalPrice: Number(editingCombo.originalPrice),
+        stockCount: Number(editingCombo.stockCount),
+        inStock: editingCombo.inStock,
+        includedProductIds: editingCombo.includedProductIds,
+        imageUrl,
+      });
 
-    setCombos((prev) =>
-      prev.map((c) => (c.id === editingCombo.id ? editingCombo : c))
-    );
-    setEditingCombo(null);
-    showToast(`কম্বো অফার '${editingCombo.name}' ডাটাবেসে আপডেট হয়েছে!`);
+      setCombos((prev) =>
+        prev.map((combo) => (combo.id === editingCombo.id ? updatedCombo : combo))
+      );
+      setEditingCombo(null);
+      setComboImageFile(null);
+      showToast(`কম্বো অফার '${editingCombo.name}' ডাটাবেসে আপডেট হয়েছে!`);
+    } catch (err) {
+      console.error('Error saving combo image or details:', err);
+      showToast(err instanceof Error ? err.message : 'কম্বো আপডেট করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSavingCatalogItem(false);
+    }
   };
 
   // 2. Base Product Table Handlers
@@ -238,9 +296,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
 
     try {
-      const created = await createProductItem(newProductForm);
+      setIsSavingCatalogItem(true);
+      const imageUrl = newProductImageFile
+        ? await uploadCatalogImage(newProductImageFile, 'products', `prod-${Date.now()}`)
+        : undefined;
+      const created = await createProductItem({ ...newProductForm, imageUrl });
       setProductsList((prev) => [created, ...prev]);
       setIsAddingProduct(false);
+      setNewProductImageFile(null);
       setNewProductForm({
         name: '',
         sku: '',
@@ -255,7 +318,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       showToast(`নতুন প্রোডাক্ট '${created.name}' ডাটাবেসে যোগ হয়েছে!`);
     } catch (err) {
       console.error('Error creating product:', err);
-      showToast('প্রোডাক্ট তৈরি করতে সমস্যা হয়েছে');
+      showToast(err instanceof Error ? err.message : 'প্রোডাক্ট তৈরি করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSavingCatalogItem(false);
     }
   };
 
@@ -263,23 +328,37 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     e.preventDefault();
     if (!editingProduct) return;
 
-    await updateProductItem(editingProduct.id, {
-      name: editingProduct.name,
-      sku: editingProduct.sku,
-      category: editingProduct.category,
-      unitWeight: editingProduct.unitWeight,
-      costPrice: Number(editingProduct.costPrice),
-      regularPrice: Number(editingProduct.regularPrice),
-      stockQuantity: Number(editingProduct.stockQuantity),
-      inStock: editingProduct.inStock,
-      description: editingProduct.description,
-    });
+    setIsSavingCatalogItem(true);
+    try {
+      const imageUrl = editingProductImageFile
+        ? await uploadCatalogImage(editingProductImageFile, 'products', editingProduct.id)
+        : editingProduct.imageUrl;
+      const updatedProduct = { ...editingProduct, imageUrl };
+      await updateProductItem(editingProduct.id, {
+        name: editingProduct.name,
+        sku: editingProduct.sku,
+        category: editingProduct.category,
+        unitWeight: editingProduct.unitWeight,
+        costPrice: Number(editingProduct.costPrice),
+        regularPrice: Number(editingProduct.regularPrice),
+        stockQuantity: Number(editingProduct.stockQuantity),
+        inStock: editingProduct.inStock,
+        description: editingProduct.description,
+        imageUrl,
+      });
 
-    setProductsList((prev) =>
-      prev.map((p) => (p.id === editingProduct.id ? editingProduct : p))
-    );
-    setEditingProduct(null);
-    showToast(`প্রোডাক্ট '${editingProduct.name}' ডাটাবেসে সফলভাবে আপডেট হয়েছে!`);
+      setProductsList((prev) =>
+        prev.map((product) => (product.id === editingProduct.id ? updatedProduct : product))
+      );
+      setEditingProduct(null);
+      setEditingProductImageFile(null);
+      showToast(`প্রোডাক্ট '${editingProduct.name}' ডাটাবেসে সফলভাবে আপডেট হয়েছে!`);
+    } catch (err) {
+      console.error('Error saving product image or details:', err);
+      showToast(err instanceof Error ? err.message : 'প্রোডাক্ট আপডেট করতে সমস্যা হয়েছে');
+    } finally {
+      setIsSavingCatalogItem(false);
+    }
   };
 
   const handleDeleteProduct = async (productId: string, productName: string) => {
@@ -361,7 +440,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const processingCount = orders.filter((o) => o.status === 'processing').length;
   const deliveredCount = orders.filter((o) => o.status === 'delivered').length;
 
-  // PIN Login Gate - Standalone Page
+  // Supabase Auth Gate - Standalone Page
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#1c1917] flex flex-col justify-center items-center p-4 font-['Hind_Siliguri',sans-serif]">
@@ -380,30 +459,43 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
             <div>
-              <label htmlFor={pinInputId} className="block text-xs font-bold text-stone-700 text-left mb-1.5">
-                অ্যাডমিন সিক্রেট পিন দিন:
+              <label htmlFor="admin-email" className="block text-xs font-bold text-stone-700 text-left mb-1.5">
+                অ্যাডমিন ইমেইল:
               </label>
               <input
-                id={pinInputId}
-                type="password"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                placeholder="ডিফল্ট পিন: 1234"
-                className="w-full px-4 py-3 rounded-xl border border-stone-300 text-center text-lg font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                autoFocus
+                id="admin-email"
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                autoComplete="username"
+                required
+                className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-              {pinError && (
-                <p className="text-xs text-rose-600 mt-1 font-medium">
-                  ভুল পিন কোড! (টেস্ট পিন: 1234 লিখুন)
-                </p>
-              )}
+            </div>
+            <div>
+              <label htmlFor="admin-password" className="block text-xs font-bold text-stone-700 text-left mb-1.5">
+                পাসওয়ার্ড:
+              </label>
+              <input
+                id="admin-password"
+                type="password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                className="w-full px-4 py-3 rounded-xl border border-stone-300 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
 
+            {authError && (
+              <p role="alert" className="text-left text-xs text-rose-600">{authError}</p>
+            )}
             <button
               type="submit"
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-sm cursor-pointer shadow-md transition-all active:scale-98"
+              disabled={isAuthenticating}
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white py-3 rounded-xl font-bold text-sm cursor-pointer shadow-md transition-all active:scale-98 disabled:opacity-50"
             >
-              ড্যাশবোর্ডে প্রবেশ করুন
+              {isAuthenticating ? 'লগইন হচ্ছে...' : 'ড্যাশবোর্ডে প্রবেশ করুন'}
             </button>
           </form>
 
@@ -417,10 +509,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               <span>স্টোর ল্যান্ডিং পেজে ফিরে যান</span>
             </button>
           </div>
-
-          <p className="text-[11px] text-stone-400 mt-4">
-            ডিফল্ট টেস্ট পাসকোড: <code className="bg-stone-100 px-1 py-0.5 rounded font-mono font-bold text-stone-700">1234</code>
-          </p>
         </div>
       </div>
     );
@@ -499,7 +587,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             <button
               onClick={() => {
-                sessionStorage.removeItem('shemai_admin_auth');
+                void getSupabaseClient().auth.signOut().then(({ error }) => {
+                  if (error) showToast(error.message);
+                });
                 setIsAuthenticated(false);
               }}
               className="p-1.5 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer text-xs font-bold"
@@ -942,7 +1032,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 <div className="flex items-center gap-2">
                   <span className="bg-amber-100 text-amber-900 text-xs font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1">
                     <Layers className="w-3.5 h-3.5" />
-                    <span>Firestore Collection: /combos</span>
+                    <span>Supabase table: public.combos</span>
                   </span>
                   <span className="text-xs text-stone-400">|</span>
                   <span className="text-xs font-semibold text-emerald-700">কনভার্ট করা কম্বো টেবিল</span>
@@ -1019,7 +1109,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
                   <div className="mt-5 pt-3 border-t border-stone-200">
                     <button
-                      onClick={() => setEditingCombo({ ...combo })}
+                      onClick={() => {
+                        setComboImageFile(null);
+                        setEditingCombo({ ...combo });
+                      }}
                       className="w-full bg-[#0073aa] hover:bg-[#005a87] text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                     >
                       <Edit className="w-3.5 h-3.5" />
@@ -1047,6 +1140,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleSaveCombo} className="space-y-4">
+                    <ImageUploadField
+                      currentImageUrl={editingCombo.imageUrl}
+                      onFileChange={setComboImageFile}
+                    />
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         বিক্রয় মূল্য (টাকা):
@@ -1142,17 +1239,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     <div className="flex gap-2 pt-3">
                       <button
                         type="button"
-                        onClick={() => setEditingCombo(null)}
+                        onClick={() => {
+                          setEditingCombo(null);
+                          setComboImageFile(null);
+                        }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >
                         বাতিল
                       </button>
                       <button
                         type="submit"
+                        disabled={isSavingCatalogItem}
                         className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        <span>কম্বো আপডেট সেভ করুন</span>
+                        <span>{isSavingCatalogItem ? 'সেভ হচ্ছে...' : 'কম্বো আপডেট সেভ করুন'}</span>
                       </button>
                     </div>
                   </form>
@@ -1170,7 +1271,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 <div className="flex items-center gap-2">
                   <span className="bg-indigo-100 text-indigo-900 text-xs font-bold px-2.5 py-0.5 rounded-md flex items-center gap-1">
                     <Boxes className="w-3.5 h-3.5" />
-                    <span>Firestore Collection: /products</span>
+                    <span>Supabase table: public.products</span>
                   </span>
                   <span className="text-xs text-stone-400">|</span>
                   <span className="text-xs font-semibold text-indigo-700">নতুন স্বতন্ত্র প্রোডাক্ট নাম টেবিল</span>
@@ -1186,7 +1287,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               {/* Add New Product Button */}
               <button
                 type="button"
-                onClick={() => setIsAddingProduct(true)}
+                onClick={() => {
+                  setNewProductImageFile(null);
+                  setIsAddingProduct(true);
+                }}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm cursor-pointer transition-all self-start sm:self-auto"
               >
                 <Plus className="w-4 h-4" />
@@ -1295,7 +1399,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         {/* Actions */}
                         <td className="py-3 px-3 align-top text-right space-x-1 whitespace-nowrap">
                           <button
-                            onClick={() => setEditingProduct({ ...prod })}
+                            onClick={() => {
+                              setEditingProductImageFile(null);
+                              setEditingProduct({ ...prod });
+                            }}
                             className="inline-flex p-1.5 text-stone-600 hover:text-emerald-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
                             title="প্রোডাক্ট এডিট করুন"
                           >
@@ -1335,6 +1442,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleCreateProduct} className="space-y-3">
+                    <ImageUploadField onFileChange={setNewProductImageFile} />
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         প্রোডাক্টের নাম * :
@@ -1492,17 +1600,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     <div className="flex gap-2 pt-3">
                       <button
                         type="button"
-                        onClick={() => setIsAddingProduct(false)}
+                        onClick={() => {
+                          setIsAddingProduct(false);
+                          setNewProductImageFile(null);
+                        }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >
                         বাতিল
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                        disabled={isSavingCatalogItem}
+                        className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        <span>প্রোডাক্ট ডাটাবেসে সেভ করুন</span>
+                        <span>{isSavingCatalogItem ? 'সেভ হচ্ছে...' : 'প্রোডাক্ট ডাটাবেসে সেভ করুন'}</span>
                       </button>
                     </div>
                   </form>
@@ -1527,6 +1639,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleSaveSingleProduct} className="space-y-3">
+                    <ImageUploadField
+                      currentImageUrl={editingProduct.imageUrl}
+                      onFileChange={setEditingProductImageFile}
+                    />
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         প্রোডাক্টের নাম:
@@ -1662,17 +1778,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     <div className="flex gap-2 pt-3">
                       <button
                         type="button"
-                        onClick={() => setEditingProduct(null)}
+                        onClick={() => {
+                          setEditingProduct(null);
+                          setEditingProductImageFile(null);
+                        }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >
                         বাতিল
                       </button>
                       <button
                         type="submit"
-                        className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                        disabled={isSavingCatalogItem}
+                        className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5 disabled:opacity-50"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        <span>আপডেট সংরক্ষণ করুন</span>
+                        <span>{isSavingCatalogItem ? 'সেভ হচ্ছে...' : 'আপডেট সংরক্ষণ করুন'}</span>
                       </button>
                     </div>
                   </form>

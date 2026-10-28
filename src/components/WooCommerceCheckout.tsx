@@ -2,7 +2,7 @@ import { useState, useId } from 'react';
 import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle } from 'lucide-react';
 import { ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import { saveOrderToFirestore } from '../services/dbService';
+import { saveOrderToSupabase } from '../services/dbService';
 
 interface WooCommerceCheckoutProps {
   bundles: ShemaiBundle[];
@@ -34,6 +34,7 @@ export default function WooCommerceCheckout({
   const [couponError, setCouponError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // Price calculations
   const itemSubtotal = currentBundle.salePrice * quantity;
@@ -118,16 +119,15 @@ export default function WooCommerceCheckout({
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmitOrder = (e: React.FormEvent) => {
+  const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) {
       return;
     }
 
     setIsSubmitting(true);
-
-    // Simulate instant order submission (WordPress WooCommerce CartFlows feel)
-    setTimeout(() => {
+    setSubmissionError(null);
+    try {
       const orderData: OrderFormData = {
         fullName: fullName.trim(),
         phone: phone.trim(),
@@ -157,14 +157,16 @@ export default function WooCommerceCheckout({
         status: 'confirmed',
       };
 
-      // Persist to backend database (Firestore / Supabase style persistence)
-      saveOrderToFirestore(placedOrder).catch((err) =>
-        console.warn('Backend order persist notice:', err)
-      );
-
-      setIsSubmitting(false);
+      await saveOrderToSupabase(placedOrder);
       onOrderSuccess(placedOrder);
-    }, 700);
+    } catch (error) {
+      console.error('Supabase order save failed:', error);
+      setSubmissionError(
+        error instanceof Error ? error.message : 'অর্ডার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -597,6 +599,11 @@ export default function WooCommerceCheckout({
                 </div>
 
                 {/* Big Order Submit Button */}
+                {submissionError && (
+                  <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
+                    অর্ডারটি সংরক্ষণ করা যায়নি: {submissionError}
+                  </p>
+                )}
                 <button
                   type="submit"
                   disabled={isSubmitting}

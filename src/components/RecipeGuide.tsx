@@ -9,7 +9,7 @@ export default function RecipeGuide() {
   };
 
   return (
-    <section id="recipe-section" className="py-12 sm:py-16 bg-white border-b border-stone-200">
+    <section id="recipe-section" className="hidden py-12 sm:py-16 bg-white border-b border-stone-200 lg:block">
       <div className="max-w-6xl mx-auto px-4">
         {/* Section Heading */}
         <div className="text-center max-w-3xl mx-auto mb-10">

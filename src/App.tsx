@@ -14,8 +14,8 @@ import StickyBottomMobileBar from './components/StickyBottomMobileBar';
 import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
 import { SHEMAI_BUNDLES, CUSTOMER_REVIEWS } from './data/shemaiData';
-import { PlacedOrder, ShemaiBundle, ProductItem } from './types';
-import { seedInitialProductsIfEmpty } from './services/dbService';
+import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
+import { seedInitialCombosIfEmpty } from './services/dbService';
 import { useCurrentRoute } from './router';
 
 export default function App() {
@@ -25,22 +25,22 @@ export default function App() {
   const [bundles, setBundles] = useState<ShemaiBundle[]>(SHEMAI_BUNDLES);
   const [selectedBundleId, setSelectedBundleId] = useState('bundle-double');
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   useEffect(() => {
     // Seed and sync products with database
-    seedInitialProductsIfEmpty().then((prods) => {
+    seedInitialCombosIfEmpty().then((prods) => {
       if (prods && prods.length > 0) {
         setBundles(prods);
       }
+    }).catch((error: unknown) => {
+      console.error('Could not load combos from Supabase:', error);
+      setCatalogError(error instanceof Error ? error.message : 'কম্বো লোড করা যায়নি');
     });
   }, [currentRoute]);
 
   const handleOrderSuccess = (order: PlacedOrder) => {
     setPlacedOrder(order);
-  };
-
-  const handleCloseSuccessModal = () => {
-    setPlacedOrder(null);
   };
 
   const handleSelectProduct = (product: ProductItem) => {
@@ -61,12 +61,16 @@ export default function App() {
     };
 
     setBundles((prev) => {
-      if (prev.some((b) => b.id === product.id)) {
-        return prev.map((b) => (b.id === product.id ? convertedBundle : b));
+      if (prev.some((bundle) => bundle.id === product.id)) {
+        return prev.map((bundle) => (bundle.id === product.id ? convertedBundle : bundle));
       }
       return [...prev, convertedBundle];
     });
     setSelectedBundleId(product.id);
+  };
+
+  const handleCloseSuccessModal = () => {
+    setPlacedOrder(null);
   };
 
   // Dedicated Separate Page for Admin Dashboard (/admin)
@@ -85,6 +89,12 @@ export default function App() {
       <main className="flex-1">
         {/* 2. Hero Section Image Slider */}
         <HeroSlider />
+
+        {catalogError && (
+          <p role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
+            Supabase থেকে কম্বো লোড করা যায়নি: {catalogError}
+          </p>
+        )}
 
         {/* 3. Dedicated Carousel Slider for Individual Products (Not Combo Pack) */}
         <ProductCarousel onSelectProduct={handleSelectProduct} />

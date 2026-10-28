@@ -1,39 +1,6 @@
-import { Check, X, Sparkles, HeartPulse, Droplets, UtensilsCrossed, ShieldCheck } from 'lucide-react';
+import { Sparkles, HeartPulse, Droplets, UtensilsCrossed, ShieldCheck } from 'lucide-react';
 
 export default function WhyChooseUs() {
-  const comparisonItems = [
-    {
-      feature: 'ভাজার মাধ্যম',
-      ourProduct: '১০০% খাঁটি দেশি গরুর দুধের গাওয়া ঘি',
-      normalMarket: 'পোড়া ডালডা, পাম তেল বা চর্বি মিশ্রিত তেল',
-    },
-    {
-      feature: 'সুঘ্রাণ ও স্বাদ',
-      ourProduct: 'খাঁটি ঘিয়ে ভাজার মনমাতানো প্রাকৃতিক সুবাস, মুখে দিলে গলে যায়',
-      normalMarket: 'ডালডার বাজে গন্ধ, মুখে চটচটে তৈলাক্ত ভাব লেগে থাকে',
-    },
-    {
-      feature: 'রান্নার পরের টেক্সচার',
-      ourProduct: 'নরম তুলতুলে কিন্তু সহজে গলে ভর্তা হয়ে যায় না',
-      normalMarket: 'দুধে দেওয়ার সাথে সাথেই গলে নরম দলা পেকে যায়',
-    },
-    {
-      feature: 'স্বাস্থ্যঝুঁকি ও প্রিজারভেটিভ',
-      ourProduct: 'সম্পূর্ণ ভেজালমুক্ত, কৃত্রিম রঙ বা ক্ষতিকর কেমিক্যাল মুক্ত',
-      normalMarket: 'ট্রান্স ফ্যাট ও পোড়া তেলের ক্ষতিকর বিষাক্ত উপাদান',
-    },
-    {
-      feature: 'প্যাকেজিং ও ফ্রেশনেস',
-      ourProduct: 'ফুড গ্রেড এয়ার-টাইট বক্স সিলিং, ৪-৬ মাস মুচমুচে থাকে',
-      normalMarket: 'পাতলা সাধারণ পলিথিন, খুব দ্রুত স্যাঁতসেঁতে বা নষ্ট হয়ে যায়',
-    },
-    {
-      feature: 'পণ্য যাচাই ও নিশ্চয়তা',
-      ourProduct: 'পণ্য হাতে পেয়ে চেক করে ডেলিভারি ম্যানকে টাকা পরিশোধ',
-      normalMarket: 'কোনো গ্যারান্টি নেই, কেনার পর ফেরত নেওয়ার সুযোগ নেই',
-    },
-  ];
-
   const features = [
     {
       icon: <Droplets className="w-6 h-6 text-amber-600" />,
@@ -94,56 +61,6 @@ export default function WhyChooseUs() {
           ))}
         </div>
 
-        {/* Comparison Table */}
-        <div className="bg-[#faf9f5] rounded-2xl p-4 sm:p-6 border border-stone-200 shadow-sm overflow-hidden">
-          <div className="text-center mb-6">
-            <h3 className="text-lg sm:text-2xl font-bold text-stone-900">
-              সরাসরি তুলনা: খাঁটি সেমাই বনাম বাজারী ডালডার সেমাই
-            </h3>
-            <p className="text-xs sm:text-sm text-stone-500 mt-1">
-              এক নজরে দেখে নিন আমাদের প্রিমিয়াম সেমাই কেন সেরা
-            </p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm border-collapse">
-              <thead>
-                <tr className="border-b border-stone-200 text-stone-800">
-                  <th className="py-3 px-3 sm:px-4 font-bold bg-stone-100/60 rounded-tl-lg">
-                    বৈশিষ্ট্য / মানদণ্ড
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 font-extrabold text-emerald-800 bg-emerald-50/80 border-x border-emerald-200">
-                    ✨ আমাদের প্রিমিয়াম শাহী লাচ্ছা সেমাই
-                  </th>
-                  <th className="py-3 px-3 sm:px-4 font-semibold text-rose-800 bg-rose-50/60 rounded-tr-lg">
-                    ❌ বাজারের সাধারণ খোলা সেমাই
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-200/80">
-                {comparisonItems.map((row, index) => (
-                  <tr key={index} className="hover:bg-amber-50/30 transition-colors">
-                    <td className="py-3 px-3 sm:px-4 font-semibold text-stone-800 align-top">
-                      {row.feature}
-                    </td>
-                    <td className="py-3 px-3 sm:px-4 bg-emerald-50/30 border-x border-emerald-100 text-stone-900 align-top">
-                      <div className="flex items-start gap-2">
-                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span className="font-medium text-emerald-950">{row.ourProduct}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 sm:px-4 bg-rose-50/20 text-stone-700 align-top">
-                      <div className="flex items-start gap-2">
-                        <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                        <span className="text-stone-600">{row.normalMarket}</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     </section>
   );
