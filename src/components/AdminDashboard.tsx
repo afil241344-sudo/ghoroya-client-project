@@ -47,6 +47,10 @@ import {
 import { uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 
+function isOrderStatus(status: string): status is BackendOrder['status'] {
+  return ['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status);
+}
+
 interface AdminDashboardProps {
   onNavigateToStore: () => void;
   onClose?: () => void;
@@ -518,49 +522,50 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     <div className="min-h-screen bg-stone-100 flex flex-col font-['Hind_Siliguri',sans-serif]">
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-5 right-5 z-50 bg-stone-900 text-white px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-500 text-xs font-bold flex items-center gap-2 animate-in slide-in-from-top-2">
+        <div className="fixed left-3 right-3 top-3 z-50 flex items-center gap-2 rounded-xl border border-emerald-500 bg-stone-900 px-4 py-2.5 text-xs font-bold text-white shadow-2xl sm:left-auto sm:right-5 sm:top-5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{notification}</span>
         </div>
       )}
 
       {/* Top Standalone Navbar */}
-      <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-xs px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      <header className="sticky top-0 z-30 border-b border-stone-200 bg-white px-3 py-3 shadow-xs sm:px-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-start sm:gap-3">
             <button
               onClick={handleBackToStore}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-700 hover:text-stone-900 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-stone-200"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-stone-200 bg-stone-100 px-2.5 py-1.5 text-xs font-bold text-stone-700 transition-colors hover:bg-stone-200 hover:text-stone-900 sm:px-3"
               title="স্টোরে ফিরে যান"
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">স্টোরে ফিরে যান</span>
               <span className="sm:hidden">স্টোর</span>
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-800 text-white font-bold flex items-center justify-center text-sm shadow-xs">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-800 text-sm font-bold text-white shadow-xs">
                 প্যা
               </div>
-              <div>
-                <h1 className="font-extrabold text-stone-900 text-base sm:text-lg leading-none flex items-center gap-2">
-                  <span>প্যারামাউন্ট ফুডস · অ্যাডমিন পোর্টাল</span>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-extrabold leading-tight text-stone-900 sm:text-lg">
+                  <span className="sm:hidden">অ্যাডমিন পোর্টাল</span>
+                  <span className="hidden sm:inline">প্যারামাউন্ট ফুডস · অ্যাডমিন পোর্টাল</span>
                   <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-normal hidden md:inline">
                     /admin
                   </span>
                 </h1>
-                <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1 mt-0.5">
+                <span className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-700 sm:text-[11px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                  <span>লাইভ ফায়ারবেস ক্লাউড ডাটাবেস সংযুক্ত</span>
+                  <span className="truncate">Supabase সংযুক্ত</span>
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-end gap-1 sm:w-auto sm:gap-2">
             <button
               onClick={loadData}
               disabled={isRefreshing}
-              className="p-2 text-stone-600 hover:text-stone-900 hover:bg-stone-100 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              className="flex shrink-0 items-center gap-1 rounded-lg p-2 text-xs font-bold text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
               title="ডাটা রিফ্রেশ করুন"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -569,7 +574,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             <button
               onClick={exportToCsv}
-              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+              className="flex shrink-0 items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100 sm:gap-1.5 sm:px-3"
             >
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">অর্ডার এক্সপোর্ট (CSV)</span>
@@ -578,7 +583,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             <button
               onClick={handleBackToStore}
-              className="bg-stone-800 hover:bg-stone-900 text-white px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1"
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-stone-800 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-stone-900 sm:px-3"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">ওয়েবসাইট ভিউ</span>
@@ -592,7 +597,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 });
                 setIsAuthenticated(false);
               }}
-              className="p-1.5 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer text-xs font-bold"
+              className="shrink-0 rounded-lg p-1.5 text-xs font-bold text-stone-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
               title="লগআউট"
             >
               লগআউট
@@ -602,85 +607,85 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6 flex-1">
+      <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6">
         {/* Metric Cards Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between">
+          <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-xs font-semibold text-stone-500">মোট বিক্রয় (আয়)</span>
-              <div className="text-xl sm:text-2xl font-black text-emerald-800 mt-1">
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">মোট বিক্রয় (আয়)</span>
+              <div className="mt-1 break-all text-lg font-black text-emerald-800 sm:text-2xl">
                 ৳{totalRevenue.toLocaleString()}
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 sm:h-10 sm:w-10">
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between">
+          <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-xs font-semibold text-stone-500">মোট অর্ডার</span>
-              <div className="text-xl sm:text-2xl font-black text-stone-900 mt-1">
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">মোট অর্ডার</span>
+              <div className="mt-1 text-lg font-black text-stone-900 sm:text-2xl">
                 {orders.length} টি
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 sm:h-10 sm:w-10">
               <ShoppingBag className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between">
+          <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-xs font-semibold text-stone-500">কম্বো অফার</span>
-              <div className="text-xl sm:text-2xl font-black text-amber-700 mt-1">
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">কম্বো অফার</span>
+              <div className="mt-1 text-lg font-black text-amber-700 sm:text-2xl">
                 {combos.length} টি
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 sm:h-10 sm:w-10">
               <Layers className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex items-center justify-between">
+          <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-xs font-semibold text-stone-500">প্রোডাক্ট আইটেম</span>
-              <div className="text-xl sm:text-2xl font-black text-indigo-700 mt-1">
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">প্রোডাক্ট আইটেম</span>
+              <div className="mt-1 text-lg font-black text-indigo-700 sm:text-2xl">
                 {productsList.length} টি
               </div>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700 sm:h-10 sm:w-10">
               <Boxes className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* Tab Controls: Orders | Combos Table | Products Table */}
-        <div className="flex border-b border-stone-200 bg-white rounded-t-xl px-4 pt-2 overflow-x-auto no-scrollbar">
+        <div className="grid grid-cols-3 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
-            className={`py-3 px-4 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
               activeTab === 'orders'
                 ? 'border-emerald-700 text-emerald-800'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
           >
             <ShoppingBag className="w-4 h-4" />
-            <span>অর্ডার তালিকা ({orders.length})</span>
+            <span className="truncate sm:whitespace-nowrap">অর্ডার ({orders.length})</span>
           </button>
 
           {/* Tab 2: Combos Table (Converted from previous products bundle table) */}
           <button
             onClick={() => setActiveTab('combos')}
-            className={`py-3 px-4 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
               activeTab === 'combos'
                 ? 'border-emerald-700 text-emerald-800'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
           >
             <Layers className="w-4 h-4" />
-            <span>কম্বো অফার টেবিল ({combos.length})</span>
-            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-semibold">
+            <span className="truncate sm:whitespace-nowrap">কম্বো ({combos.length})</span>
+            <span className="hidden text-[10px] font-semibold sm:block sm:rounded sm:bg-amber-100 sm:px-1.5 sm:py-0.2 sm:text-amber-800">
               Combos
             </span>
           </button>
@@ -688,15 +693,15 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           {/* Tab 3: Products Table (Base catalog items) */}
           <button
             onClick={() => setActiveTab('products')}
-            className={`py-3 px-4 font-bold text-xs sm:text-sm border-b-2 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
               activeTab === 'products'
                 ? 'border-emerald-700 text-emerald-800'
                 : 'border-transparent text-stone-500 hover:text-stone-800'
             }`}
           >
             <Boxes className="w-4 h-4" />
-            <span>প্রোডাক্ট নাম টেবিল ({productsList.length})</span>
-            <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-semibold">
+            <span className="truncate sm:whitespace-nowrap">প্রোডাক্ট ({productsList.length})</span>
+            <span className="hidden text-[10px] font-semibold sm:block sm:rounded sm:bg-indigo-100 sm:px-1.5 sm:py-0.2 sm:text-indigo-800">
               Products
             </span>
           </button>
@@ -704,7 +709,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
         {/* TAB 1: ORDERS MANAGEMENT */}
         {activeTab === 'orders' && (
-          <div className="bg-white rounded-b-xl border border-t-0 border-stone-200 p-4 sm:p-6 space-y-4">
+          <div className="min-w-0 space-y-4 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
             {/* Search & Status Filters */}
             <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
               {/* Search Box */}
@@ -720,7 +725,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               </div>
 
               {/* Status Segmented Buttons */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 no-scrollbar text-xs">
+              <div className="grid grid-cols-3 gap-1 pb-1 text-[11px] sm:flex sm:flex-wrap sm:pb-0 sm:text-xs">
                 {[
                   { key: 'all', label: 'সব' },
                   { key: 'pending', label: 'নতুন' },
@@ -732,7 +737,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   <button
                     key={st.key}
                     onClick={() => setStatusFilter(st.key)}
-                    className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`min-w-0 rounded-lg px-2 py-1.5 font-bold transition-all ${
                       statusFilter === st.key
                         ? 'bg-emerald-700 text-white shadow-xs'
                         : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
@@ -744,9 +749,108 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               </div>
             </div>
 
+            {/* Mobile order cards */}
+            <div className="space-y-3 md:hidden">
+              {filteredOrders.length === 0 ? (
+                <div className="rounded-xl border border-stone-200 py-8 text-center text-sm text-stone-500">
+                  কোনো অর্ডার পাওয়া যায়নি।
+                </div>
+              ) : filteredOrders.map((order) => {
+                const whatsappUrl = `https://wa.me/88${order.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                  `সালামু আলাইকুম ${order.customerName}! প্যারামাউন্ট ফুডস থেকে আপনার লাচ্ছা সেমাই এর অর্ডার #${order.orderId} সম্পর্কে যোগাযোগ করছি।`
+                )}`;
+
+                return (
+                  <article key={order.orderId} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="break-all font-mono text-xs font-bold text-emerald-800">#{order.orderId}</p>
+                        <p className="mt-1 break-words text-sm font-bold text-stone-900">{order.customerName}</p>
+                        <a href={`tel:${order.customerPhone}`} className="text-xs text-stone-600 underline">
+                          {order.customerPhone}
+                        </a>
+                      </div>
+                      <span className="shrink-0 text-sm font-black text-stone-900">৳{order.totalAmount}</span>
+                    </div>
+
+                    <div className="mt-3 space-y-1 border-t border-stone-200 pt-3 text-xs">
+                      <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
+                      <p className="break-words text-stone-600">{order.customerAddress}</p>
+                      <p className="text-stone-500">{order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'} · {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}</p>
+                      {order.bkashTxId && <p className="break-all text-stone-500">Trx: {order.bkashTxId}</p>}
+                      {order.note && <p className="break-words text-amber-800">নোট: {order.note}</p>}
+                      {order.courierTrackingCode && (
+                        <p className="break-all text-indigo-700">
+                          {order.courierName || 'কুরিয়ার'} · {order.courierTrackingCode}
+                        </p>
+                      )}
+                    </div>
+
+                    {!order.courierTrackingCode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const courier = prompt(
+                            'কুরিয়ারের নাম লিখুন (যেমন: Steadfast, Sundarban, Pathao):',
+                            'Steadfast',
+                          );
+                          if (!courier) return;
+                          const code = prompt('ট্র্যাকিং কোড বা পার্সেল আইডি লিখুন:');
+                          if (code) {
+                            handleCourierUpdate(order.orderId, courier, code);
+                          }
+                        }}
+                        className="mt-2 text-xs font-semibold text-emerald-700 underline"
+                      >
+                        + কুরিয়ার কোড যোগ করুন
+                      </button>
+                    )}
+
+                    <label className="mt-3 block text-[11px] font-bold text-stone-600">
+                      অর্ডার স্ট্যাটাস
+                      <select
+                        value={order.status}
+                        onChange={(event) => {
+                          const status = event.target.value;
+                          if (isOrderStatus(status)) handleStatusChange(order.orderId, status);
+                        }}
+                        disabled={updatingOrderId === order.orderId}
+                        className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 disabled:opacity-50"
+                      >
+                        <option value="pending">নতুন</option>
+                        <option value="processing">প্রসেসিং</option>
+                        <option value="shipped">কুরিয়ারে</option>
+                        <option value="delivered">ডেলিভার্ড</option>
+                        <option value="cancelled">বাতিল</option>
+                      </select>
+                    </label>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-stone-200 pt-2">
+                      <div className="flex gap-2">
+                        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-bold text-emerald-800">
+                          WhatsApp
+                        </a>
+                        <a href={`tel:${order.customerPhone}`} className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-stone-700">
+                          কল
+                        </a>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteOrder(order.orderId)}
+                        className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                        aria-label={`অর্ডার ${order.orderId} মুছুন`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+
             {/* Orders Table */}
-            <div className="overflow-x-auto border border-stone-200 rounded-xl">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="hidden overflow-x-auto rounded-xl border border-stone-200 md:block">
+              <table className="w-full min-w-[980px] text-left text-xs border-collapse">
                 <thead className="bg-stone-50 border-b border-stone-200 text-stone-700 font-bold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-3">অর্ডার আইডি</th>
@@ -1026,7 +1130,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
         {/* TAB 2: COMBO OFFERS TABLE (কম্বো অফার টেবিল - Converted Table) */}
         {activeTab === 'combos' && (
-          <div className="bg-white rounded-b-xl border border-t-0 border-stone-200 p-4 sm:p-6 space-y-6">
+          <div className="min-w-0 space-y-6 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1125,8 +1229,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             {/* Edit Combo Modal */}
             {editingCombo && (
-              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200">
+              <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 backdrop-blur-xs sm:p-4">
+                <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-stone-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-extrabold text-stone-900 text-base">
                       কম্বো এডিট: {editingCombo.name}
@@ -1265,7 +1369,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
         {/* TAB 3: BASE PRODUCTS CATALOG TABLE (প্রোডাক্ট নাম টেবিল - New Table) */}
         {activeTab === 'products' && (
-          <div className="bg-white rounded-b-xl border border-t-0 border-stone-200 p-4 sm:p-6 space-y-6">
+          <div className="min-w-0 space-y-6 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
               <div>
                 <div className="flex items-center gap-2">
@@ -1298,9 +1402,77 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               </button>
             </div>
 
+            {/* Mobile product cards */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:hidden">
+              {productsList.length === 0 ? (
+                <div className="col-span-full rounded-xl border border-stone-200 py-8 text-center text-sm text-stone-500">
+                  কোনো প্রোডাক্ট আইটেম পাওয়া যায়নি। নতুন প্রোডাক্ট যোগ করতে উপরের বাটনে চাপ দিন।
+                </div>
+              ) : productsList.map((product) => (
+                <article key={product.id} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h4 className="break-words text-sm font-bold text-stone-900">{product.name}</h4>
+                      <p className="mt-1 text-[11px] text-stone-500">{product.category} · {product.unitWeight}</p>
+                    </div>
+                    <span className="shrink-0 text-sm font-black text-emerald-800">৳{product.regularPrice}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-600">
+                    <span>SKU: {product.sku || 'N/A'}</span>
+                    <span>ক্রয়: ৳{product.costPrice}</span>
+                    <span>স্টক: {product.stockQuantity}</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-stone-200 pt-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const updatedInStock = !product.inStock;
+                        try {
+                          await updateProductItem(product.id, { inStock: updatedInStock });
+                          setProductsList((prev) =>
+                            prev.map((item) => item.id === product.id ? { ...item, inStock: updatedInStock } : item)
+                          );
+                          showToast(`'${product.name}' এর স্টক স্ট্যাটাস পরিবর্তন হয়েছে`);
+                        } catch (error) {
+                          console.error('Could not update product stock:', error);
+                          showToast(error instanceof Error ? error.message : 'স্টক আপডেট করা যায়নি');
+                        }
+                      }}
+                      className={`rounded-lg px-2.5 py-1.5 text-[11px] font-bold ${
+                        product.inStock ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      }`}
+                    >
+                      {product.inStock ? '✓ ইন স্টক' : '✕ স্টক নেই'}
+                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingProductImageFile(null);
+                          setEditingProduct({ ...product });
+                        }}
+                        className="rounded-lg p-2 text-stone-600 hover:bg-white"
+                        aria-label={`${product.name} এডিট করুন`}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteProduct(product.id, product.name)}
+                        className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                        aria-label={`${product.name} মুছুন`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+
             {/* Products Table */}
-            <div className="overflow-x-auto border border-stone-200 rounded-xl">
-              <table className="w-full text-left text-xs border-collapse">
+            <div className="hidden max-w-full overflow-x-auto rounded-xl border border-stone-200 md:block">
+              <table className="w-full min-w-[900px] border-collapse text-left text-xs">
                 <thead className="bg-stone-50 border-b border-stone-200 text-stone-700 font-bold uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-3">প্রোডাক্টের নাম</th>
@@ -1426,8 +1598,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             {/* Modal: Add New Product */}
             {isAddingProduct && (
-              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200">
+              <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 backdrop-blur-xs sm:p-4">
+                <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-stone-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-extrabold text-stone-900 text-base flex items-center gap-2">
                       <Plus className="w-4 h-4 text-emerald-700" />
@@ -1459,7 +1631,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className="block text-xs font-bold text-stone-700 mb-1">
                           SKU কোড :
@@ -1492,7 +1664,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <label className="block text-xs font-bold text-stone-700 mb-1">
                           ওজন / সাইজ :
@@ -1624,8 +1796,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             {/* Modal: Edit Existing Product */}
             {editingProduct && (
-              <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200">
+              <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-2 backdrop-blur-xs sm:p-4">
+                <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-stone-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-extrabold text-stone-900 text-base">
                       প্রোডাক্ট এডিট: {editingProduct.name}
@@ -1658,7 +1830,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className="block text-xs font-bold text-stone-700 mb-1">
                           SKU কোড:
@@ -1689,7 +1861,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                       <div>
                         <label className="block text-xs font-bold text-stone-700 mb-1">
                           ওজন / সাইজ:
