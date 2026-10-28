@@ -1,11 +1,7 @@
 import { ShoppingBag, Phone, MessageCircle } from 'lucide-react';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 export default function StickyBottomMobileBar() {
-  const scrollToCheckout = () => {
-    const el = document.getElementById('checkout-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  };
-
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-300 p-2 sm:hidden shadow-[0_-4px_15px_rgba(0,0,0,0.08)]">
       <div className="flex items-center gap-2 max-w-md mx-auto">

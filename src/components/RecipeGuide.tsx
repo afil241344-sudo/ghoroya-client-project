@@ -1,13 +1,9 @@
 import { ChefHat, Flame, Sparkles, Clock, Utensils, Heart } from 'lucide-react';
 import preparedDishImg from '../assets/images/prepared_malai_shemai_1793156370328.jpg';
 import { RECIPE_STEPS } from '../data/shemaiData';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 export default function RecipeGuide() {
-  const scrollToCheckout = () => {
-    const el = document.getElementById('checkout-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  };
-
   return (
     <section id="recipe-section" className="hidden py-12 sm:py-16 bg-white border-b border-stone-200 lg:block">
       <div className="max-w-6xl mx-auto px-4">

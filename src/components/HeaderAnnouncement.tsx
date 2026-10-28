@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Clock, PhoneCall, Sparkles } from 'lucide-react';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 export default function HeaderAnnouncement() {
   // Countdown timer for urgency
@@ -27,11 +28,6 @@ export default function HeaderAnnouncement() {
 
   const formatNumber = (num: number) => {
     return num.toString().padStart(2, '0');
-  };
-
-  const scrollToCheckout = () => {
-    const el = document.getElementById('checkout-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
   return (

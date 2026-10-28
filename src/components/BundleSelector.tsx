@@ -1,5 +1,6 @@
 import { Check, Flame, Gift, Sparkles, ArrowRight, Package } from 'lucide-react';
 import { ShemaiBundle } from '../types';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 // Authentic Product & Pack Images
 import heroBowlImg from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
@@ -33,10 +34,7 @@ export default function BundleSelector({
 }: BundleSelectorProps) {
   const handleSelect = (id: string) => {
     onSelectBundle(id);
-    const checkoutEl = document.getElementById('checkout-section');
-    if (checkoutEl) {
-      checkoutEl.scrollIntoView({ behavior: 'smooth' });
-    }
+    scrollToCheckout();
   };
 
   const getBundleImage = (bundle: ShemaiBundle): string => {

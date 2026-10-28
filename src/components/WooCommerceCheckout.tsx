@@ -170,7 +170,7 @@ export default function WooCommerceCheckout({
   };
 
   return (
-    <section id="checkout-section" className="py-12 sm:py-16 bg-[#f7f4ec] border-b border-amber-900/10">
+    <section id="checkout-section" className="scroll-mt-24 py-12 sm:py-16 bg-[#f7f4ec] border-b border-amber-900/10">
       <div className="max-w-6xl mx-auto px-4">
         {/* Checkout Header Banner */}
         <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 text-white p-5 rounded-2xl shadow-md mb-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4 border border-emerald-600/40">
@@ -193,7 +193,7 @@ export default function WooCommerceCheckout({
           </div>
         </div>
 
-        <form onSubmit={handleSubmitOrder}>
+        <form id="checkout-form" onSubmit={handleSubmitOrder}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* Left 7 Columns: Billing & Delivery Details */}
             <div className="lg:col-span-7 bg-white p-5 sm:p-7 rounded-2xl shadow-sm border border-stone-200">

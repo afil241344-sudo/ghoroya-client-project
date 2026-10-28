@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 import { Star, CheckCircle2, ShoppingCart, Sparkles, Phone, Award, ShieldAlert, ArrowDown } from 'lucide-react';
 import heroBowlImg from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
 import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
@@ -27,11 +28,6 @@ export default function HeroSection() {
   ];
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-
-  const scrollToCheckout = () => {
-    const el = document.getElementById('checkout-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  };
 
   return (
     <section className="relative overflow-hidden bg-gradient-to-b from-[#fffbf2] via-[#faf5ea] to-[#f5eedc] pt-6 sm:pt-10 pb-12 sm:pb-16 border-b border-amber-900/10">

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ShoppingBag } from 'lucide-react';
 import { ProductItem } from '../types';
 import { fetchAllProducts } from '../services/dbService';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 import shemaiBowlImg from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
 import gheeCloseupImg from '../assets/images/shemai_ghee_closeup_1793175979653.jpg';
@@ -114,7 +115,7 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
 
   const handleOrderClick = (product: ProductItem) => {
     onSelectProduct?.(product);
-    document.getElementById('checkout-section')?.scrollIntoView({ behavior: 'smooth' });
+    scrollToCheckout();
   };
 
   return (

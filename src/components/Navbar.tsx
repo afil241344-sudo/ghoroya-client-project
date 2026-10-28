@@ -1,11 +1,7 @@
 import { ShieldCheck, Truck, Phone, MessageCircle, ShoppingBag } from 'lucide-react';
+import { scrollToCheckout } from '../utils/scrollToCheckout';
 
 export default function Navbar() {
-  const scrollToCheckout = () => {
-    const el = document.getElementById('checkout-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  };
-
   const scrollToBundles = () => {
     const el = document.getElementById('bundles-section');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
