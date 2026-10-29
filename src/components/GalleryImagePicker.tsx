@@ -6,7 +6,10 @@ export interface GalleryImageOption {
   id: string;
   label: string;
   imageUrl: string;
+  category: 'homepage' | 'gallery' | 'product' | 'combo' | 'slider';
 }
+
+type ImageCategory = 'all' | GalleryImageOption['category'];
 
 interface GalleryImagePickerProps {
   availableSlots: number;
@@ -31,8 +34,23 @@ export default function GalleryImagePicker({
 }: GalleryImagePickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'upload' | 'existing'>('upload');
+  const [imageCategory, setImageCategory] = useState<ImageCategory>('all');
   const [fileError, setFileError] = useState<string | null>(null);
   const [filePreviews, setFilePreviews] = useState<Array<{ file: File; url: string }>>([]);
+  const visibleExistingImages = imageCategory === 'all'
+    ? existingImages
+    : existingImages.filter((image) => image.category === imageCategory);
+  const imageCategoryOptions: Array<{ id: ImageCategory; label: string }> = [
+    { id: 'all', label: 'সব ছবি' },
+    { id: 'product', label: 'প্রোডাক্ট' },
+    { id: 'combo', label: 'কম্বো' },
+    { id: 'gallery', label: 'গ্যালারি' },
+    { id: 'slider', label: 'স্লাইডার' },
+    { id: 'homepage', label: 'আগের হোমপেজ' },
+  ];
+  const imageCategories = imageCategoryOptions.filter(({ id }) => (
+    id === 'all' || existingImages.some((image) => image.category === id)
+  ));
 
   useEffect(() => {
     const previews = selectedFiles.map((file) => ({ file, url: URL.createObjectURL(file) }));
@@ -176,8 +194,26 @@ export default function GalleryImagePicker({
         ) : (
           <>
             <p className="mb-3 text-xs text-stone-500">যে ছবিগুলো card হিসেবে রাখতে চান, সেগুলোতে click করুন।</p>
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {imageCategories.map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setImageCategory(id)}
+                  aria-pressed={imageCategory === id}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-bold transition ${imageCategory === id ? 'bg-emerald-700 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}`}
+                >
+                  {label}
+                  {id !== 'all' && (
+                    <span className="ml-1 opacity-75">
+                      {existingImages.filter((image) => image.category === id).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
             <div className="grid max-h-80 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
-              {existingImages.map((image) => {
+              {visibleExistingImages.map((image) => {
                 const isSelected = selectedImageUrls.includes(image.imageUrl);
                 const isDisabled = !isSelected
                   && selectedFiles.length + selectedImageUrls.length >= availableSlots;
@@ -201,6 +237,11 @@ export default function GalleryImagePicker({
                 );
               })}
             </div>
+            {visibleExistingImages.length === 0 && (
+              <p className="rounded-xl border border-dashed border-stone-200 bg-stone-50 p-6 text-center text-xs text-stone-500">
+                এই category-তে কোনো ছবি পাওয়া যায়নি।
+              </p>
+            )}
             <p className="mt-3 text-right text-[11px] text-stone-500">
               {selectedFiles.length + selectedImageUrls.length}/{availableSlots}টি ছবি নির্বাচিত
             </p>

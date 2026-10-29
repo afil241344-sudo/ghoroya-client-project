@@ -871,25 +871,27 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
   };
 
-  const galleryImageOptions: GalleryImageOption[] = [
-    { label: 'আগের হোমপেজ ছবি · সেমাই বোল', imageUrl: heroBowlImage },
-    { label: 'আগের হোমপেজ ছবি · প্যাকেজিং বক্স', imageUrl: packagingBoxImage },
-    { label: 'আগের হোমপেজ ছবি · তৈরি সেমাই', imageUrl: preparedDishImage },
+  const galleryImageOptions: GalleryImageOption[] = ([
+    { label: 'আগের হোমপেজ ছবি · সেমাই বোল', imageUrl: heroBowlImage, category: 'homepage' },
+    { label: 'আগের হোমপেজ ছবি · প্যাকেজিং বক্স', imageUrl: packagingBoxImage, category: 'homepage' },
+    { label: 'আগের হোমপেজ ছবি · তৈরি সেমাই', imageUrl: preparedDishImage, category: 'homepage' },
     ...homepageImageCards.map((card) => ({
       label: `আগের gallery ছবি · ${card.altText}`,
       imageUrl: card.imageUrl,
+      category: 'gallery' as const,
     })),
     ...productsList.flatMap((product) => product.imageUrl
-      ? [{ label: `প্রোডাক্ট · ${product.name}`, imageUrl: product.imageUrl }]
+      ? [{ label: `প্রোডাক্ট · ${product.name}`, imageUrl: product.imageUrl, category: 'product' as const }]
       : []),
     ...combos.flatMap((combo) => combo.imageUrl
-      ? [{ label: `কম্বো · ${combo.name}`, imageUrl: combo.imageUrl }]
+      ? [{ label: `কম্বো · ${combo.name}`, imageUrl: combo.imageUrl, category: 'combo' as const }]
       : []),
     ...sliderImages.map((slide) => ({
       label: `স্লাইডার · ${slide.title}`,
       imageUrl: slide.imageUrl,
+      category: 'slider' as const,
     })),
-  ].map((option) => ({ ...option, id: option.imageUrl }))
+  ] as GalleryImageOption[]).map((option) => ({ ...option, id: option.imageUrl }))
     .filter((option, index, options) => (
       options.findIndex((candidate) => candidate.imageUrl === option.imageUrl) === index
     ));
