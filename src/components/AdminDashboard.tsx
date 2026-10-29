@@ -254,6 +254,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [editingSliderImage, setEditingSliderImage] = useState<SliderImage | null>(null);
   const [sliderImageFile, setSliderImageFile] = useState<File | null>(null);
   const [isSliderImageValid, setIsSliderImageValid] = useState(true);
+  const [pendingSliderDelete, setPendingSliderDelete] = useState<SliderImage | null>(null);
+  const [isDeletingSlider, setIsDeletingSlider] = useState(false);
   const [sliderDraft, setSliderDraft] = useState({
     title: '',
     altText: '',
@@ -329,6 +331,15 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isStorefrontMenuOpen]);
+
+  useEffect(() => {
+    if (!pendingSliderDelete || isDeletingSlider) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPendingSliderDelete(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [pendingSliderDelete, isDeletingSlider]);
 
   const showToast = (msg: string) => {
     setNotification(msg);
@@ -952,14 +963,17 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteSlider = async (slide: SliderImage) => {
-    if (!window.confirm(`"${slide.title}" slider image মুছে ফেলবেন?`)) return;
+    setIsDeletingSlider(true);
     try {
       await deleteSliderImage(slide.id);
       setSliderImages((current) => current.filter((item) => item.id !== slide.id));
+      setPendingSliderDelete(null);
     } catch (error) {
       console.error('Could not delete slider image:', error);
       showToast(error instanceof Error ? error.message : 'Slider image মুছে ফেলা যায়নি।');
       return;
+    } finally {
+      setIsDeletingSlider(false);
     }
 
     try {
@@ -3785,45 +3799,61 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
         {activeTab === 'slider' && (
           <div className="min-w-0 space-y-5 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
-            <section className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <section className="flex flex-col gap-4 rounded-2xl border border-stone-800 bg-gradient-to-br from-stone-900 via-stone-800 to-emerald-950 p-4 text-white shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
               <div>
                 <h3 className="flex items-center gap-2 text-base font-black text-stone-900">
-                  <ImageIcon className="h-5 w-5 text-amber-700" />
-                  Homepage slider পরিচালনা
+                  <ImageIcon className="h-5 w-5 text-amber-300" />
+                  <span>Homepage slider পরিচালনা</span>
                 </h3>
-                <p className="mt-1 text-xs text-stone-600">
-                  ছবির অনুপাত 16:9, ন্যূনতম 1280 × 720 px; 1920 × 1080 px recommended।
-                  সর্বোচ্চ file size 5 MB।
+                <p className="mt-1 max-w-2xl text-xs leading-relaxed text-stone-300">
+                  Homepage-এর hero banner পরিচালনা করুন। 16:9 ratio · 1920 × 1080 px recommended ·
+                  Upload limit 15 MB, বড় image upload-এর সময় optimize হবে।
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => openSliderForm()}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-3 text-xs font-extrabold text-stone-950 shadow-sm transition hover:bg-amber-300 focus:outline-none focus:ring-4 focus:ring-amber-200/30"
               >
                 <Plus className="h-4 w-4" />
-                Slider যোগ করুন
+                নতুন slider যোগ করুন
               </button>
             </section>
 
             {sliderImages.length === 0 && (
-              <section className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-5 text-center">
-                <p className="text-sm font-bold text-stone-800">এখনো কোনো slider image যোগ করা হয়নি।</p>
+              <section className="rounded-2xl border border-dashed border-stone-300 bg-gradient-to-b from-stone-50 to-white px-5 py-12 text-center">
+                <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-700 ring-1 ring-amber-100">
+                  <ImageIcon className="h-7 w-7" />
+                </span>
+                <p className="mt-4 text-sm font-bold text-stone-800">এখনো কোনো slider image যোগ করা হয়নি</p>
                 <p className="mt-1 text-xs text-stone-600">
                   Slider যোগ করলে সেটি সক্রিয় থাকা অবস্থায় homepage-এ প্রদর্শিত হবে।
                 </p>
+                <button
+                  type="button"
+                  onClick={() => openSliderForm()}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-stone-900 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-stone-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  প্রথম slider যোগ করুন
+                </button>
               </section>
             )}
 
             {isSliderFormOpen && (
-              <form onSubmit={handleSaveSlider} className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:p-5">
-                <div>
-                  <h3 className="text-sm font-black text-stone-900">
+              <form onSubmit={handleSaveSlider} className="space-y-5 rounded-2xl border border-stone-200 bg-gradient-to-b from-stone-50 to-white p-4 shadow-sm sm:p-6">
+                <div className="flex items-start justify-between gap-3 border-b border-stone-200 pb-4">
+                  <div>
+                    <h3 className="text-base font-black text-stone-900">
                     {editingSliderImage ? 'Slider image edit করুন' : 'নতুন slider image'}
-                  </h3>
-                  <p className="mt-1 text-xs text-stone-600">
-                    Title admin-এর জন্য; alt text accessibility এবং search-এর জন্য ব্যবহৃত হবে।
-                  </p>
+                    </h3>
+                    <p className="mt-1 text-xs text-stone-600">
+                      Title admin-এর জন্য; alt text accessibility এবং search-এর জন্য ব্যবহৃত হবে।
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[10px] font-bold text-stone-500 ring-1 ring-stone-200">
+                    {editingSliderImage ? 'EDIT SLIDE' : 'NEW SLIDE'}
+                  </span>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="text-xs font-semibold text-stone-700">
@@ -3833,7 +3863,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       maxLength={120}
                       value={sliderDraft.title}
                       onChange={(event) => setSliderDraft((current) => ({ ...current, title: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm shadow-xs outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
                     />
                   </label>
                   <label className="text-xs font-semibold text-stone-700">
@@ -3843,7 +3873,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       maxLength={250}
                       value={sliderDraft.altText}
                       onChange={(event) => setSliderDraft((current) => ({ ...current, altText: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm shadow-xs outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
                     />
                   </label>
                   <label className="text-xs font-semibold text-stone-700 sm:col-span-2">
@@ -3852,7 +3882,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       maxLength={180}
                       value={sliderDraft.caption}
                       onChange={(event) => setSliderDraft((current) => ({ ...current, caption: event.target.value }))}
-                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3 py-2.5 text-sm shadow-xs outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
                     />
                   </label>
                 </div>
@@ -3860,28 +3890,31 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   currentImageUrl={editingSliderImage?.imageUrl}
                   onFileChange={handleSliderFileChange}
                 />
-                <label className="flex items-center gap-2 text-xs font-semibold text-stone-700">
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-3 text-xs font-semibold text-stone-700">
                   <input
                     type="checkbox"
                     checked={sliderDraft.isActive}
                     onChange={(event) => setSliderDraft((current) => ({ ...current, isActive: event.target.checked }))}
                     className="h-4 w-4 accent-emerald-700"
                   />
-                  Homepage-এ active রাখুন
+                  <span className="flex-1">Homepage-এ active রাখুন</span>
+                  <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${sliderDraft.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-100 text-stone-600'}`}>
+                    {sliderDraft.isActive ? 'ACTIVE' : 'HIDDEN'}
+                  </span>
                 </label>
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button
                     type="button"
                     onClick={closeSliderForm}
                     disabled={isSavingSlider}
-                    className="rounded-lg bg-stone-100 px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-200 disabled:opacity-50"
+                    className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50"
                   >
                     বাতিল
                   </button>
                   <button
                     type="submit"
                     disabled={isSavingSlider || !isSliderImageValid}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-800 focus:outline-none focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Save className="h-4 w-4" />
                     {isSavingSlider ? 'সেভ হচ্ছে...' : 'Slider সেভ করুন'}
@@ -3891,78 +3924,171 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             )}
 
             {sliderImages.length > 0 && (
-              <section className="space-y-3">
-                <h3 className="text-sm font-bold text-stone-800">Slider image তালিকা</h3>
-                <div className="grid gap-3 lg:grid-cols-2">
+              <section className="space-y-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-stone-900">Slider image তালিকা</h3>
+                    <p className="mt-0.5 text-[11px] text-stone-500">ক্রম, visibility ও image details এখান থেকে পরিচালনা করুন।</p>
+                  </div>
+                  <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[10px] font-bold text-stone-600">
+                    {sliderImages.length}টি slide
+                  </span>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {sliderImages.map((slide, index) => (
-                    <article key={slide.id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white sm:flex-row">
-                      <img
-                        src={slide.imageUrl}
-                        alt={slide.altText}
-                        className="aspect-video w-full bg-stone-100 object-cover sm:aspect-auto sm:h-36 sm:w-56"
-                        loading="lazy"
-                      />
-                      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="truncate text-sm font-bold text-stone-900">{slide.title}</h4>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              slide.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
-                            }`}>{slide.isActive ? 'Active' : 'Inactive'}</span>
+                    <article key={slide.id} className="group min-w-0 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-lg">
+                      <div className="relative aspect-video overflow-hidden bg-stone-100">
+                        <img
+                          src={slide.imageUrl}
+                          alt={slide.altText}
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
+                          loading="lazy"
+                        />
+                        <span className="absolute left-3 top-3 rounded-full bg-stone-950/65 px-2.5 py-1 text-[10px] font-bold text-white backdrop-blur-sm">
+                          SLIDE {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <span className={`absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold shadow-sm backdrop-blur-sm ${
+                          slide.isActive ? 'bg-emerald-50/95 text-emerald-800' : 'bg-stone-100/95 text-stone-600'
+                        }`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${slide.isActive ? 'bg-emerald-500' : 'bg-stone-400'}`} />
+                          {slide.isActive ? 'LIVE' : 'HIDDEN'}
+                        </span>
+                        {slide.caption && (
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950/70 to-transparent px-3 pb-3 pt-10">
+                            <p className="line-clamp-1 text-xs font-medium text-white">{slide.caption}</p>
                           </div>
-                          {slide.caption && <p className="mt-1 line-clamp-2 text-xs text-stone-600">{slide.caption}</p>}
-                          <p className="mt-1 truncate text-[10px] text-stone-500">Order {index + 1} · 16:9</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-3 p-3.5">
+                        <div className="min-w-0">
+                          <h4 className="truncate text-sm font-bold text-stone-900">{slide.title}</h4>
+                          <p className="mt-1 truncate text-[11px] text-stone-500" title={slide.altText}>
+                            Alt: {slide.altText}
+                          </p>
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
+
+                        <div className="flex items-center justify-between border-t border-stone-100 pt-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void handleMoveSlider(index, -1)}
+                              disabled={index === 0}
+                              aria-label={`${slide.title} উপরে নিন`}
+                              title="আগে নিন"
+                              className="rounded-lg border border-stone-200 p-2 text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleMoveSlider(index, 1)}
+                              disabled={index === sliderImages.length - 1}
+                              aria-label={`${slide.title} নিচে নিন`}
+                              title="পরে নিন"
+                              className="rounded-lg border border-stone-200 p-2 text-stone-600 transition hover:border-stone-300 hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-30"
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </button>
                           <button
                             type="button"
-                            onClick={() => void handleMoveSlider(index, -1)}
-                            disabled={index === 0}
-                            aria-label={`${slide.title} উপরে নিন`}
-                            className="rounded-lg border border-stone-200 p-2 text-stone-600 hover:bg-stone-50 disabled:opacity-30"
-                          >
-                            <ChevronUp className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleMoveSlider(index, 1)}
-                            disabled={index === sliderImages.length - 1}
-                            aria-label={`${slide.title} নিচে নিন`}
-                            className="rounded-lg border border-stone-200 p-2 text-stone-600 hover:bg-stone-50 disabled:opacity-30"
-                          >
-                            <ChevronDown className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleToggleSlider(slide)}
-                            aria-label={slide.isActive ? `${slide.title} inactive করুন` : `${slide.title} active করুন`}
-                            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
-                          >
-                            {slide.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                            {slide.isActive ? 'Hide' : 'Show'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openSliderForm(slide)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
-                          >
-                            <Edit className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteSlider(slide)}
+                            onClick={() => setPendingSliderDelete(slide)}
                             aria-label={`${slide.title} মুছুন`}
-                            className="rounded-lg border border-rose-100 p-2 text-rose-600 hover:bg-rose-50"
+                            title="Slider মুছুন"
+                            className="rounded-lg border border-rose-100 p-2 text-rose-600 transition hover:border-rose-200 hover:bg-rose-50"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => void handleToggleSlider(slide)}
+                              aria-label={slide.isActive ? `${slide.title} inactive করুন` : `${slide.title} active করুন`}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700 transition hover:bg-stone-50"
+                            >
+                              {slide.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                              {slide.isActive ? 'Hide' : 'Show'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openSliderForm(slide)}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-stone-900 px-2.5 py-2 text-[11px] font-semibold text-white transition hover:bg-stone-700"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                              Edit
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </article>
                   ))}
                 </div>
               </section>
+            )}
+
+            {pendingSliderDelete && (
+              <div
+                className="fixed inset-0 z-[70] flex items-center justify-center bg-stone-950/55 p-4 backdrop-blur-sm"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget && !isDeletingSlider) {
+                    setPendingSliderDelete(null);
+                  }
+                }}
+              >
+                <section
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="delete-slider-title"
+                  className="w-full max-w-md overflow-hidden rounded-2xl border border-white/60 bg-white shadow-2xl"
+                >
+                  <div className="flex items-start gap-3 p-5 sm:p-6">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+                      <Trash2 className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 id="delete-slider-title" className="text-base font-black text-stone-900">
+                        Slider image মুছে ফেলবেন?
+                      </h3>
+                      <p className="mt-1 text-xs leading-relaxed text-stone-600">
+                        এই slide homepage থেকে সরবে এবং ছবিটি storage থেকেও delete হবে।
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mx-5 flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-2.5 sm:mx-6">
+                    <img
+                      src={pendingSliderDelete.imageUrl}
+                      alt=""
+                      className="h-14 w-24 shrink-0 rounded-lg object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-stone-800">{pendingSliderDelete.title}</p>
+                      <p className="mt-1 text-[10px] text-stone-500">
+                        {pendingSliderDelete.isActive ? 'Homepage-এ active' : 'বর্তমানে hidden'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex flex-col-reverse gap-2 border-t border-stone-100 bg-stone-50/70 p-4 sm:flex-row sm:justify-end sm:px-6">
+                    <button
+                      type="button"
+                      onClick={() => setPendingSliderDelete(null)}
+                      disabled={isDeletingSlider}
+                      className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50"
+                    >
+                      বাতিল
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteSlider(pendingSliderDelete)}
+                      disabled={isDeletingSlider}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {isDeletingSlider ? 'মুছে ফেলা হচ্ছে...' : 'হ্যাঁ, মুছে ফেলুন'}
+                    </button>
+                  </div>
+                </section>
+              </div>
             )}
           </div>
         )}
