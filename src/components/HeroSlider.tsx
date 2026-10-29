@@ -5,70 +5,65 @@ import {
   Maximize2, 
   X 
 } from 'lucide-react';
-import heroBowlImg from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
-import gheeCloseupImg from '../assets/images/shemai_ghee_closeup_1793175979653.jpg';
-import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import gheeJarImg from '../assets/images/shemai_ghee_jar_1793175996687.jpg';
-import preparedDishImg from '../assets/images/prepared_malai_shemai_1793156370328.jpg';
+import { DEFAULT_SLIDER_IMAGES } from '../data/sliderImages';
+import { fetchSliderImages } from '../services/dbService';
 
 interface ProductImage {
-  id: number;
+  id: string;
   src: string;
   alt: string;
   caption: string;
 }
 
-const PRODUCT_IMAGES: ProductImage[] = [
-  {
-    id: 1,
-    src: heroBowlImg,
-    alt: 'খাঁটি গাওয়া ঘিয়ে ভাজা শাহী লাচ্ছা সেমাই বোল',
-    caption: 'খাঁটি গাওয়া ঘিয়ে ভাজা শাহী লাচ্ছা সেমাই',
-  },
-  {
-    id: 2,
-    src: gheeCloseupImg,
-    alt: 'মুচমুচে সোনালী মিহি সুতা ও পেস্তা বাদাম ক্লোজআপ',
-    caption: 'মুচমুচে সোনালী মিহি সুতা ও কাজু-পেস্তা বাদাম',
-  },
-  {
-    id: 3,
-    src: packagingBoxImg,
-    alt: 'প্রিমিয়াম ফুড-গ্রেড এক্সক্লুসিভ বক্স প্যাকেজিং',
-    caption: 'প্রিমিয়াম ফুড-গ্রেড এয়ারটাইট বক্স প্যাকেজিং',
-  },
-  {
-    id: 4,
-    src: gheeJarImg,
-    alt: 'সিরাজগঞ্জের খাঁটি গরুর গাওয়া ঘি ও এলাচ উপাদান',
-    caption: 'সিরাজগঞ্জের খাঁটি দেশি গরুর দুধের গাওয়া ঘি',
-  },
-  {
-    id: 5,
-    src: preparedDishImg,
-    alt: 'ঘন দুধ-মালাই দিয়ে তৈরি সুস্বাদু শাহী সেমাই',
-    caption: 'ঘন দুধ-মালাই ও পেস্তা বাদামে তৈরি শাহী ডেজার্ট',
-  }
-];
+const DEFAULT_SLIDES: ProductImage[] = DEFAULT_SLIDER_IMAGES.map((slide, index) => ({
+  id: `default-${index}`,
+  src: slide.src,
+  alt: slide.altText,
+  caption: slide.caption,
+}));
 
 export default function HeroSlider() {
+  const [slides, setSlides] = useState<ProductImage[]>(DEFAULT_SLIDES);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
 
-  const nextSlide = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % PRODUCT_IMAGES.length);
+  useEffect(() => {
+    let isMounted = true;
+    fetchSliderImages(true)
+      .then((images) => {
+        if (!isMounted) return;
+        setSlides(images.map((image) => ({
+          id: image.id,
+          src: image.imageUrl,
+          alt: image.altText,
+          caption: image.caption,
+        })));
+        setCurrentIndex(0);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not load active homepage slider images:', error);
+        if (isMounted) setSlides(DEFAULT_SLIDES);
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
+  const nextSlide = useCallback(() => {
+    setCurrentIndex((prev) => slides.length > 0 ? (prev + 1) % slides.length : 0);
+  }, [slides.length]);
+
   const prevSlide = useCallback(() => {
-    setCurrentIndex((prev) => (prev - 1 + PRODUCT_IMAGES.length) % PRODUCT_IMAGES.length);
-  }, []);
+    setCurrentIndex((prev) => slides.length > 0 ? (prev - 1 + slides.length) % slides.length : 0);
+  }, [slides.length]);
 
   // Smooth Auto-play
   useEffect(() => {
-    if (isPaused || lightboxOpen) {
+    if (isPaused || lightboxOpen || slides.length < 2) {
       if (autoPlayRef.current) clearInterval(autoPlayRef.current);
       return;
     }
@@ -80,7 +75,7 @@ export default function HeroSlider() {
     return () => {
       if (autoPlayRef.current) clearInterval(autoPlayRef.current);
     };
-  }, [isPaused, lightboxOpen, nextSlide]);
+  }, [isPaused, lightboxOpen, nextSlide, slides.length]);
 
   // Touch handlers for mobile swipe
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -100,7 +95,8 @@ export default function HeroSlider() {
     touchStartX.current = null;
   };
 
-  const currentProduct = PRODUCT_IMAGES[currentIndex];
+  if (slides.length === 0) return null;
+  const currentProduct = slides[currentIndex] ?? slides[0];
 
   return (
     <section 
@@ -117,8 +113,8 @@ export default function HeroSlider() {
           onTouchEnd={handleTouchEnd}
         >
           {/* Main Slide Images */}
-          <div className="relative aspect-[4/3] sm:aspect-[16/9] md:aspect-[2.1/1] w-full overflow-hidden flex items-center justify-center">
-            {PRODUCT_IMAGES.map((img, idx) => (
+          <div className="relative aspect-video w-full overflow-hidden flex items-center justify-center">
+            {slides.map((img, idx) => (
               <div
                 key={img.id}
                 className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
@@ -137,6 +133,12 @@ export default function HeroSlider() {
 
             {/* Subtle Gradient Shadow at Bottom for Dots / Caption */}
             <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/60 via-black/20 to-transparent z-20 pointer-events-none" />
+
+            {currentProduct.caption && (
+              <p className="absolute bottom-8 left-4 z-30 max-w-[75%] text-left text-xs font-semibold text-white drop-shadow sm:bottom-9 sm:left-6 sm:text-sm">
+                {currentProduct.caption}
+              </p>
+            )}
 
             {/* Zoom / Lightbox minimal button top-right */}
             <div className="absolute top-3 right-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -172,7 +174,7 @@ export default function HeroSlider() {
 
             {/* Minimal Center Pagination Dots */}
             <div className="absolute bottom-3 sm:bottom-4 inset-x-0 flex items-center justify-center gap-1.5 sm:gap-2 z-30">
-              {PRODUCT_IMAGES.map((_, idx) => (
+              {slides.map((_, idx) => (
                 <button
                   key={idx}
                   type="button"

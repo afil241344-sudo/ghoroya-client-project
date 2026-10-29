@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Package,
   ShoppingBag,
@@ -35,8 +35,14 @@ import {
   Settings,
   Database,
   LogOut,
+  Image as ImageIcon,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
+import SliderImageUploadField from './SliderImageUploadField';
 import {
   fetchAllOrders,
   subscribeToOrders,
@@ -55,15 +61,21 @@ import {
   deleteCoupon,
   fetchDeliverySettings,
   updateDeliverySettings,
+  fetchSliderImages,
+  createSliderImage,
+  updateSliderImage,
+  deleteSliderImage,
   StoreDeliverySettings,
+  SliderImage,
   BackendOrder,
   BackendCombo,
   ProductItem,
 } from '../services/dbService';
 import { DBCoupon } from '../types';
-import { uploadCatalogImage } from '../services/imageUpload';
+import { cropSliderImageToStandard, deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 import { getBundleImage } from '../utils/bundleImages';
+import { DEFAULT_SLIDER_IMAGES } from '../data/sliderImages';
 
 function isOrderStatus(status: string): status is BackendOrder['status'] {
   return ['pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status);
@@ -202,17 +214,30 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Tab State: 'orders' | 'combos' | 'products' | 'coupons' | 'settings'
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'settings'>('orders');
+  // Tab State: orders, combos, products, coupons, slider, or settings
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'settings'>('orders');
 
   // Data states
   const [orders, setOrders] = useState<BackendOrder[]>([]);
   const [combos, setCombos] = useState<BackendCombo[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [coupons, setCoupons] = useState<DBCoupon[]>([]);
+  const [sliderImages, setSliderImages] = useState<SliderImage[]>([]);
   const [deliverySettings, setDeliverySettings] = useState<StoreDeliverySettings | null>(null);
   const [isSavingCoupon, setIsSavingCoupon] = useState(false);
   const [isSavingDeliverySettings, setIsSavingDeliverySettings] = useState(false);
+  const [isSavingSlider, setIsSavingSlider] = useState(false);
+  const [isImportingDefaultSlides, setIsImportingDefaultSlides] = useState(false);
+  const [isSliderFormOpen, setIsSliderFormOpen] = useState(false);
+  const [editingSliderImage, setEditingSliderImage] = useState<SliderImage | null>(null);
+  const [sliderImageFile, setSliderImageFile] = useState<File | null>(null);
+  const [isSliderImageValid, setIsSliderImageValid] = useState(true);
+  const [sliderDraft, setSliderDraft] = useState({
+    title: '',
+    altText: '',
+    caption: '',
+    isActive: true,
+  });
   const [couponForm, setCouponForm] = useState({
     code: '',
     discountType: 'fixed' as DBCoupon['discountType'],
@@ -261,6 +286,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     setTimeout(() => setNotification(null), 3500);
   };
 
+  const handleSliderFileChange = useCallback((file: File | null, isValid: boolean) => {
+    setSliderImageFile(file);
+    setIsSliderImageValid(isValid);
+  }, []);
+
   const loadData = async () => {
     setIsRefreshing(true);
     try {
@@ -276,6 +306,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setProductsList(fetchedProducts);
       setCoupons(fetchedCoupons);
       setDeliverySettings(fetchedDeliverySettings);
+      setSliderImages(await fetchSliderImages());
     } catch (err) {
       console.error('Error fetching admin data:', err);
       showToast(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
@@ -319,11 +350,12 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       seedInitialProductsCatalogIfEmpty(),
       fetchAllCoupons(),
       fetchDeliverySettings(),
-    ]).then(([cList, pList, couponList, fetchedDeliverySettings]) => {
+    ]).then(async ([cList, pList, couponList, fetchedDeliverySettings]) => {
       setCombos(cList);
       setProductsList(pList);
       setCoupons(couponList);
       setDeliverySettings(fetchedDeliverySettings);
+      setSliderImages(await fetchSliderImages());
       setIsLoading(false);
     }).catch((error: unknown) => {
       console.error('Could not load catalog data from Supabase:', error);
@@ -589,6 +621,198 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     } catch (error) {
       console.error('Could not delete coupon:', error);
       showToast(error instanceof Error ? error.message : 'কুপন মুছে ফেলা যায়নি।');
+    }
+  };
+
+  const openSliderForm = (slide?: SliderImage) => {
+    setEditingSliderImage(slide ?? null);
+    setSliderDraft(slide
+      ? {
+          title: slide.title,
+          altText: slide.altText,
+          caption: slide.caption,
+          isActive: slide.isActive,
+        }
+      : { title: '', altText: '', caption: '', isActive: true });
+    setSliderImageFile(null);
+    setIsSliderImageValid(true);
+    setIsSliderFormOpen(true);
+  };
+
+  const closeSliderForm = () => {
+    setIsSliderFormOpen(false);
+    setEditingSliderImage(null);
+    setSliderImageFile(null);
+    setIsSliderImageValid(true);
+  };
+
+  const handleSaveSlider = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!sliderDraft.title.trim() || !sliderDraft.altText.trim()) {
+      showToast('Slider-এর title এবং alt text লিখুন।');
+      return;
+    }
+    if (!isSliderImageValid) {
+      showToast('নির্দেশনা অনুযায়ী একটি বৈধ slider image নির্বাচন করুন।');
+      return;
+    }
+    if (!editingSliderImage && !sliderImageFile) {
+      showToast('নতুন slider যোগ করতে একটি image নির্বাচন করুন।');
+      return;
+    }
+
+    setIsSavingSlider(true);
+    let uploadedImageUrl: string | null = null;
+    const slideId = editingSliderImage?.id ?? crypto.randomUUID();
+    const previousImageUrl = editingSliderImage?.imageUrl;
+    try {
+      if (sliderImageFile) {
+        uploadedImageUrl = await uploadCatalogImage(sliderImageFile, 'slider', slideId);
+      }
+      const image = {
+        title: sliderDraft.title.trim(),
+        altText: sliderDraft.altText.trim(),
+        caption: sliderDraft.caption.trim(),
+        imageUrl: uploadedImageUrl ?? editingSliderImage?.imageUrl ?? '',
+        sortOrder: editingSliderImage?.sortOrder
+          ?? (Math.max(-1, ...sliderImages.map((slide) => slide.sortOrder)) + 1),
+        isActive: sliderDraft.isActive,
+      };
+
+      if (editingSliderImage) {
+        await updateSliderImage(editingSliderImage.id, image);
+        setSliderImages((current) => current.map((slide) => (
+          slide.id === editingSliderImage.id ? { ...slide, ...image } : slide
+        )));
+      } else {
+        const created = await createSliderImage({ id: slideId, ...image });
+        setSliderImages((current) => [...current, created].sort(
+          (left, right) => left.sortOrder - right.sortOrder,
+        ));
+      }
+    } catch (error) {
+      if (uploadedImageUrl) {
+        try {
+          await deleteCatalogImage(uploadedImageUrl);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused slider image:', cleanupError);
+        }
+      }
+      console.error('Could not save slider image:', error);
+      showToast(error instanceof Error ? error.message : 'Slider image সেভ করা যায়নি।');
+      setIsSavingSlider(false);
+      return;
+    }
+
+    closeSliderForm();
+    setIsSavingSlider(false);
+    if (uploadedImageUrl && previousImageUrl && previousImageUrl !== uploadedImageUrl) {
+      try {
+        await deleteCatalogImage(previousImageUrl);
+      } catch (error) {
+        console.error('Slider updated but the previous image could not be removed:', error);
+        showToast('Slider আপডেট হয়েছে, তবে পুরোনো image Storage থেকে মুছতে পারেনি।');
+        return;
+      }
+    }
+    showToast(editingSliderImage ? 'Slider image আপডেট হয়েছে।' : 'নতুন slider image যোগ হয়েছে।');
+  };
+
+  const handleToggleSlider = async (slide: SliderImage) => {
+    try {
+      await updateSliderImage(slide.id, { isActive: !slide.isActive });
+      setSliderImages((current) => current.map((item) => (
+        item.id === slide.id ? { ...item, isActive: !item.isActive } : item
+      )));
+      showToast(slide.isActive ? 'Slider image নিষ্ক্রিয় করা হয়েছে।' : 'Slider image সক্রিয় করা হয়েছে।');
+    } catch (error) {
+      console.error('Could not change slider image visibility:', error);
+      showToast(error instanceof Error ? error.message : 'Slider status আপডেট করা যায়নি।');
+    }
+  };
+
+  const handleDeleteSlider = async (slide: SliderImage) => {
+    if (!window.confirm(`"${slide.title}" slider image মুছে ফেলবেন?`)) return;
+    try {
+      await deleteSliderImage(slide.id);
+      setSliderImages((current) => current.filter((item) => item.id !== slide.id));
+    } catch (error) {
+      console.error('Could not delete slider image:', error);
+      showToast(error instanceof Error ? error.message : 'Slider image মুছে ফেলা যায়নি।');
+      return;
+    }
+
+    try {
+      await deleteCatalogImage(slide.imageUrl);
+      showToast('Slider image মুছে ফেলা হয়েছে।');
+    } catch (error) {
+      console.error('Slider record deleted but its Storage image could not be removed:', error);
+      showToast('Slider মুছে গেছে, তবে Storage থেকে image মুছতে পারেনি।');
+    }
+  };
+
+  const handleMoveSlider = async (slideIndex: number, direction: -1 | 1) => {
+    const destination = slideIndex + direction;
+    if (destination < 0 || destination >= sliderImages.length) return;
+    const reordered = [...sliderImages];
+    [reordered[slideIndex], reordered[destination]] = [reordered[destination], reordered[slideIndex]];
+
+    try {
+      await Promise.all(reordered.map((slide, index) => updateSliderImage(slide.id, { sortOrder: index })));
+      setSliderImages(reordered.map((slide, index) => ({ ...slide, sortOrder: index })));
+    } catch (error) {
+      console.error('Could not reorder slider images:', error);
+      try {
+        setSliderImages(await fetchSliderImages());
+      } catch (refreshError) {
+        console.error('Could not refresh slider order after a failed update:', refreshError);
+      }
+      showToast(error instanceof Error ? error.message : 'Slider order আপডেট করা যায়নি।');
+    }
+  };
+
+  const handleImportDefaultSlides = async () => {
+    if (sliderImages.length > 0) return;
+    setIsImportingDefaultSlides(true);
+    try {
+      for (const [index, slide] of DEFAULT_SLIDER_IMAGES.entries()) {
+        const response = await fetch(slide.src);
+        if (!response.ok) throw new Error(`বর্তমান slide ${index + 1} image পড়া যায়নি।`);
+        const blob = await response.blob();
+        const contentType = blob.type || 'image/jpeg';
+        const extension = contentType.split('/')[1] === 'jpeg' ? 'jpg' : contentType.split('/')[1];
+        const sourceFile = new File([blob], `legacy-slider-${index + 1}.${extension}`, { type: contentType });
+        const file = await cropSliderImageToStandard(sourceFile);
+        const id = crypto.randomUUID();
+        const imageUrl = await uploadCatalogImage(file, 'slider', id);
+        try {
+          const created = await createSliderImage({
+            id,
+            title: slide.title,
+            altText: slide.altText,
+            caption: slide.caption,
+            imageUrl,
+            sortOrder: index,
+            isActive: true,
+          });
+          setSliderImages((current) => [...current, created].sort(
+            (left, right) => left.sortOrder - right.sortOrder,
+          ));
+        } catch (error) {
+          try {
+            await deleteCatalogImage(imageUrl);
+          } catch (cleanupError) {
+            console.error('Could not clean up an unregistered default slider image:', cleanupError);
+          }
+          throw error;
+        }
+      }
+      showToast('বর্তমান ৫টি slider image ডাটাবেসে import হয়েছে।');
+    } catch (error) {
+      console.error('Could not import default slider images:', error);
+      showToast(error instanceof Error ? error.message : 'Slider image import করা যায়নি।');
+    } finally {
+      setIsImportingDefaultSlides(false);
     }
   };
 
@@ -1051,8 +1275,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           </div>
         </div>
 
-        {/* Tab Controls: Orders | Combos Table | Products Table | Coupons | Settings */}
-        <div className="grid grid-cols-5 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
+        {/* Tab Controls: Orders | Combos | Products | Coupons | Slider | Settings */}
+        <div className="grid grid-cols-3 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
@@ -1108,6 +1332,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           >
             <Tag className="w-4 h-4" />
             <span className="truncate sm:whitespace-nowrap">কুপন ({coupons.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('slider')}
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+              activeTab === 'slider'
+                ? 'border-emerald-700 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span className="truncate sm:whitespace-nowrap">স্লাইডার ({sliderImages.length})</span>
           </button>
 
           <button
@@ -2794,6 +3030,199 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 </div>
               )}
             </section>
+          </div>
+        )}
+
+        {activeTab === 'slider' && (
+          <div className="min-w-0 space-y-5 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900">
+                  <ImageIcon className="h-5 w-5 text-amber-700" />
+                  Homepage slider পরিচালনা
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  ছবির অনুপাত 16:9, ন্যূনতম 1280 × 720 px; 1920 × 1080 px recommended।
+                  সর্বোচ্চ file size 5 MB।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => openSliderForm()}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
+              >
+                <Plus className="h-4 w-4" />
+                Slider যোগ করুন
+              </button>
+            </section>
+
+            {sliderImages.length === 0 && (
+              <section className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-5 text-center">
+                <p className="text-sm font-bold text-stone-800">এখনো কোনো database slider নেই।</p>
+                <p className="mt-1 text-xs text-stone-600">
+                  আগের homepage-এর পাঁচটি image database-এ নিয়ে এসে সেগুলো এখান থেকে পরিচালনা করতে পারবেন।
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleImportDefaultSlides()}
+                  disabled={isImportingDefaultSlides}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  {isImportingDefaultSlides ? 'Import হচ্ছে...' : 'বর্তমান slider image import করুন'}
+                </button>
+              </section>
+            )}
+
+            {isSliderFormOpen && (
+              <form onSubmit={handleSaveSlider} className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:p-5">
+                <div>
+                  <h3 className="text-sm font-black text-stone-900">
+                    {editingSliderImage ? 'Slider image edit করুন' : 'নতুন slider image'}
+                  </h3>
+                  <p className="mt-1 text-xs text-stone-600">
+                    Title admin-এর জন্য; alt text accessibility এবং search-এর জন্য ব্যবহৃত হবে।
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-stone-700">
+                    Title
+                    <input
+                      required
+                      maxLength={120}
+                      value={sliderDraft.title}
+                      onChange={(event) => setSliderDraft((current) => ({ ...current, title: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-stone-700">
+                    Alt text
+                    <input
+                      required
+                      maxLength={250}
+                      value={sliderDraft.altText}
+                      onChange={(event) => setSliderDraft((current) => ({ ...current, altText: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-stone-700 sm:col-span-2">
+                    Caption (optional)
+                    <input
+                      maxLength={180}
+                      value={sliderDraft.caption}
+                      onChange={(event) => setSliderDraft((current) => ({ ...current, caption: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+                <SliderImageUploadField
+                  currentImageUrl={editingSliderImage?.imageUrl}
+                  onFileChange={handleSliderFileChange}
+                />
+                <label className="flex items-center gap-2 text-xs font-semibold text-stone-700">
+                  <input
+                    type="checkbox"
+                    checked={sliderDraft.isActive}
+                    onChange={(event) => setSliderDraft((current) => ({ ...current, isActive: event.target.checked }))}
+                    className="h-4 w-4 accent-emerald-700"
+                  />
+                  Homepage-এ active রাখুন
+                </label>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={closeSliderForm}
+                    disabled={isSavingSlider}
+                    className="rounded-lg bg-stone-100 px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-200 disabled:opacity-50"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingSlider || !isSliderImageValid}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingSlider ? 'সেভ হচ্ছে...' : 'Slider সেভ করুন'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {sliderImages.length > 0 && (
+              <section className="space-y-3">
+                <h3 className="text-sm font-bold text-stone-800">Slider image তালিকা</h3>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {sliderImages.map((slide, index) => (
+                    <article key={slide.id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-stone-200 bg-white sm:flex-row">
+                      <img
+                        src={slide.imageUrl}
+                        alt={slide.altText}
+                        className="aspect-video w-full bg-stone-100 object-cover sm:aspect-auto sm:h-36 sm:w-56"
+                        loading="lazy"
+                      />
+                      <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 p-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="truncate text-sm font-bold text-stone-900">{slide.title}</h4>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              slide.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                            }`}>{slide.isActive ? 'Active' : 'Inactive'}</span>
+                          </div>
+                          {slide.caption && <p className="mt-1 line-clamp-2 text-xs text-stone-600">{slide.caption}</p>}
+                          <p className="mt-1 truncate text-[10px] text-stone-500">Order {index + 1} · 16:9</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => void handleMoveSlider(index, -1)}
+                            disabled={index === 0}
+                            aria-label={`${slide.title} উপরে নিন`}
+                            className="rounded-lg border border-stone-200 p-2 text-stone-600 hover:bg-stone-50 disabled:opacity-30"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleMoveSlider(index, 1)}
+                            disabled={index === sliderImages.length - 1}
+                            aria-label={`${slide.title} নিচে নিন`}
+                            className="rounded-lg border border-stone-200 p-2 text-stone-600 hover:bg-stone-50 disabled:opacity-30"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleSlider(slide)}
+                            aria-label={slide.isActive ? `${slide.title} inactive করুন` : `${slide.title} active করুন`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
+                          >
+                            {slide.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            {slide.isActive ? 'Hide' : 'Show'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openSliderForm(slide)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteSlider(slide)}
+                            aria-label={`${slide.title} মুছুন`}
+                            className="rounded-lg border border-rose-100 p-2 text-rose-600 hover:bg-rose-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 

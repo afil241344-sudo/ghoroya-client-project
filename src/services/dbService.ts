@@ -38,6 +38,16 @@ export interface StoreDeliverySettings {
   outsideDhakaDeliveryFee: number;
 }
 
+export interface SliderImage {
+  id: string;
+  title: string;
+  altText: string;
+  caption: string;
+  imageUrl: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 export type BackendProduct = BackendCombo;
 export interface SingleProduct extends ProductItem {}
 export type { ProductItem };
@@ -47,6 +57,7 @@ const COMBOS_TABLE = 'combos';
 const PRODUCTS_TABLE = 'products';
 const COUPONS_TABLE = 'coupons';
 const STORE_SETTINGS_TABLE = 'store_settings';
+const SLIDER_IMAGES_TABLE = 'slider_images';
 
 export const DEFAULT_BASE_PRODUCTS: ProductItem[] = [
   {
@@ -295,6 +306,57 @@ export async function updateDeliverySettings(
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Delivery settings were not updated. Check admin permissions.');
+}
+
+export async function fetchSliderImages(activeOnly = false): Promise<SliderImage[]> {
+  let query = getSupabaseClient()
+    .from(SLIDER_IMAGES_TABLE)
+    .select('*')
+    .order('sort_order')
+    .order('created_at');
+  if (activeOnly) query = query.eq('is_active', true);
+  const { data, error } = await query;
+  throwOnError(error);
+  if (!data) throw new Error('Supabase returned no slider image records.');
+  return data.map((row) => fromDatabaseRow<SliderImage>(row));
+}
+
+export async function createSliderImage(
+  image: Omit<SliderImage, 'id'> & { id?: string },
+): Promise<SliderImage> {
+  const { data, error } = await getSupabaseClient()
+    .from(SLIDER_IMAGES_TABLE)
+    .insert(toDatabaseRow(image))
+    .select()
+    .single();
+  throwOnError(error);
+  if (!data) throw new Error('Supabase did not return the created slider image.');
+  return fromDatabaseRow<SliderImage>(data);
+}
+
+export async function updateSliderImage(
+  imageId: string,
+  updates: Partial<Omit<SliderImage, 'id'>>,
+): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(SLIDER_IMAGES_TABLE)
+    .update(toDatabaseRow({ ...updates, updatedAt: new Date().toISOString() }))
+    .eq('id', imageId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Slider image was not updated. Check admin permissions.');
+}
+
+export async function deleteSliderImage(imageId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(SLIDER_IMAGES_TABLE)
+    .delete()
+    .eq('id', imageId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Slider image was not deleted. Check admin permissions.');
 }
 
 export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<BackendOrder> {
