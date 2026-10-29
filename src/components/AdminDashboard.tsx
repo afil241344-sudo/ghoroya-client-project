@@ -33,6 +33,8 @@ import {
   ChevronsLeft,
   ChevronsRight,
   Settings,
+  Database,
+  LogOut,
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
 import {
@@ -936,65 +938,44 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       )}
 
       {/* Top Standalone Navbar */}
-      <header className="sticky top-0 z-30 border-b border-stone-200 bg-white px-3 py-3 shadow-xs sm:px-4">
-        <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="flex min-w-0 items-center justify-between gap-2 sm:justify-start sm:gap-3">
+      <header className="sticky top-0 z-30 border-b border-stone-200 bg-white px-2 py-2 shadow-xs sm:px-4 sm:py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <button
               onClick={handleBackToStore}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-stone-200 bg-stone-100 px-2.5 py-1.5 text-xs font-bold text-stone-700 transition-colors hover:bg-stone-200 hover:text-stone-900 sm:px-3"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-stone-200 bg-stone-100 text-stone-700 transition-colors hover:bg-stone-200 hover:text-stone-900"
               title="স্টোরে ফিরে যান"
+              aria-label="স্টোরে ফিরে যান"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">স্টোরে ফিরে যান</span>
-              <span className="sm:hidden">স্টোর</span>
             </button>
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:flex-initial">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-800 text-sm font-bold text-white shadow-xs">
-                প্যা
-              </div>
-              <div className="min-w-0">
-                <h1 className="truncate text-sm font-extrabold leading-tight text-stone-900 sm:text-lg">
-                  <span className="sm:hidden">অ্যাডমিন পোর্টাল</span>
-                  <span className="hidden sm:inline">প্যারামাউন্ট ফুডস · অ্যাডমিন পোর্টাল</span>
-                  <span className="text-[10px] font-mono bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded font-normal hidden md:inline">
-                    /admin
-                  </span>
-                </h1>
-                <span className="mt-0.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-700 sm:text-[11px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span>
-                  <span className="truncate">Supabase সংযুক্ত</span>
-                </span>
-              </div>
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-800"
+              title="DB"
+              aria-label="DB"
+            >
+              <Database className="h-5 w-5" />
             </div>
           </div>
 
-          <div className="flex w-full items-center justify-end gap-1 sm:w-auto sm:gap-2">
+          <div className="flex shrink-0 items-center justify-end gap-1 sm:gap-2">
             <button
               onClick={loadData}
               disabled={isRefreshing}
-              className="flex shrink-0 items-center gap-1 rounded-lg p-2 text-xs font-bold text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
               title="ডাটা রিফ্রেশ করুন"
+              aria-label="ডাটা রিফ্রেশ করুন"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">রিফ্রেশ</span>
             </button>
 
             <button
               onClick={exportToCsv}
-              className="flex shrink-0 items-center gap-1 rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 py-1.5 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100 sm:gap-1.5 sm:px-3"
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 transition-colors hover:bg-emerald-100"
+              title="অর্ডার CSV এক্সপোর্ট"
+              aria-label="অর্ডার CSV এক্সপোর্ট"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">অর্ডার এক্সপোর্ট (CSV)</span>
-              <span className="sm:hidden">CSV</span>
-            </button>
-
-            <button
-              onClick={handleBackToStore}
-              className="flex shrink-0 items-center gap-1 rounded-lg bg-stone-800 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-stone-900 sm:px-3"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">ওয়েবসাইট ভিউ</span>
-              <span className="sm:hidden">স্টোর</span>
+              <Download className="h-4 w-4" />
             </button>
 
             <button
@@ -1004,10 +985,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 });
                 setIsAuthenticated(false);
               }}
-              className="shrink-0 rounded-lg p-1.5 text-xs font-bold text-stone-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-500 transition-colors hover:bg-rose-50 hover:text-rose-600"
               title="লগআউট"
+              aria-label="লগআউট"
             >
-              লগআউট
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -1348,17 +1330,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         />
                         <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
                       </div>
-                      <p className="text-stone-600">
-                        প্রতি পণ্যের মূল্য: ৳{formatOrderUnitPrice(order)} · পণ্যের মোট: ৳{order.itemSubtotal.toLocaleString('en-BD')}
-                      </p>
                       <p className="break-words text-stone-600">{order.customerAddress}</p>
-                      <p className="text-stone-500">
-                        {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
-                        {' · ডেলিভারি চার্জ: '}
-                        {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('en-BD')}`}
-                        {' · '}
-                        {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}
-                      </p>
+                      <p className="text-stone-500">{order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'} · {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}</p>
                       {order.bkashTxId && <p className="break-all text-stone-500">Trx: {order.bkashTxId}</p>}
                       {order.note && <p className="break-words text-amber-800">নোট: {order.note}</p>}
                       {order.courierTrackingCode && (
@@ -1506,9 +1479,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                               {order.customerAddress}
                             </div>
                             <span className="inline-block mt-1 text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded">
-                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
-                              {' · ডেলিভারি চার্জ: '}
-                              {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('en-BD')}`}
+                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে (৳৭০)' : 'ঢাকার বাইরে (৳১৩০)'}
                             </span>
                             {order.note && (
                               <p className="text-[10px] text-amber-800 italic mt-0.5">
@@ -1529,12 +1500,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                                 <span className="font-bold text-stone-900">{order.bundleName}</span>
                                 <span className="block text-[11px] text-stone-500">
                                   পরিমাণ: <strong>{order.quantity} টি</strong>
-                                </span>
-                                <span className="block text-[11px] text-stone-600">
-                                  প্রতি পণ্য: ৳{formatOrderUnitPrice(order)}
-                                </span>
-                                <span className="block text-[11px] text-stone-600">
-                                  পণ্যের মোট: ৳{order.itemSubtotal.toLocaleString('en-BD')}
                                 </span>
                               </div>
                             </div>
