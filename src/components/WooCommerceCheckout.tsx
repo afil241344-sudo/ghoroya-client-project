@@ -2,7 +2,13 @@ import { useState, useId, useEffect } from 'react';
 import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle } from 'lucide-react';
 import { DBCoupon, ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import { fetchActiveCoupons, InsufficientStockError, saveOrderToSupabase } from '../services/dbService';
+import {
+  fetchActiveCoupons,
+  fetchDeliverySettings,
+  InsufficientStockError,
+  saveOrderToSupabase,
+  StoreDeliverySettings,
+} from '../services/dbService';
 
 interface WooCommerceCheckoutProps {
   bundles: ShemaiBundle[];
@@ -37,6 +43,8 @@ export default function WooCommerceCheckout({
   const [activeCoupons, setActiveCoupons] = useState<DBCoupon[]>([]);
   const [couponLoadError, setCouponLoadError] = useState<string | null>(null);
   const [isLoadingCoupons, setIsLoadingCoupons] = useState(true);
+  const [deliverySettings, setDeliverySettings] = useState<StoreDeliverySettings | null>(null);
+  const [deliverySettingsError, setDeliverySettingsError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
@@ -72,6 +80,23 @@ export default function WooCommerceCheckout({
   }, []);
 
   useEffect(() => {
+    let active = true;
+    fetchDeliverySettings()
+      .then((settings) => {
+        if (active) setDeliverySettings(settings);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not load delivery settings:', error);
+        if (active) {
+          setDeliverySettingsError('ডেলিভারি চার্জ লোড করা যায়নি। অর্ডার করতে পেজ রিফ্রেশ করুন।');
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!appliedCoupon) return;
     const coupon = activeCoupons.find((item) => item.code === appliedCoupon && item.isActive);
     if (!coupon) {
@@ -93,7 +118,9 @@ export default function WooCommerceCheckout({
   const deliveryCharge =
     currentBundle.freeDelivery || isFreeShippingCoupon
       ? 0
-      : deliveryArea === 'dhaka' ? 70 : 130;
+      : deliveryArea === 'dhaka'
+        ? deliverySettings?.dhakaDeliveryFee ?? 0
+        : deliverySettings?.outsideDhakaDeliveryFee ?? 0;
   const discount = selectedCoupon?.discountType === 'fixed'
     ? Math.min(selectedCoupon.discountAmount, itemSubtotal)
     : 0;
@@ -166,6 +193,12 @@ export default function WooCommerceCheckout({
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!deliverySettings) {
+      setSubmissionError(
+        deliverySettingsError || 'ডেলিভারি চার্জ লোড হচ্ছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।',
+      );
+      return;
+    }
     if (isOutOfStock) {
       setSubmissionError('দুঃখিত, এই পণ্যটি বর্তমানে স্টকে নেই।');
       return;
@@ -210,8 +243,14 @@ export default function WooCommerceCheckout({
         status: 'confirmed',
       };
 
-      await saveOrderToSupabase(placedOrder);
-      onOrderSuccess(placedOrder);
+      const savedOrder = await saveOrderToSupabase(placedOrder);
+      onOrderSuccess({
+        ...placedOrder,
+        itemSubtotal: savedOrder.itemSubtotal,
+        deliveryCharge: savedOrder.deliveryCharge,
+        discount: savedOrder.discount,
+        totalAmount: savedOrder.totalAmount,
+      });
     } catch (error) {
       console.error('Supabase order save failed:', error);
       window.dispatchEvent(new Event('inventory-updated'));
@@ -347,7 +386,11 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার ভেতরে</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || isFreeShippingCoupon ? 'ফ্রি' : '৳৭০'}
+                        {currentBundle.freeDelivery || isFreeShippingCoupon
+                          ? 'ফ্রি'
+                          : deliverySettings
+                            ? `৳${deliverySettings.dhakaDeliveryFee.toLocaleString()}`
+                            : 'লোড হচ্ছে...'}
                       </span>
                     </label>
 
@@ -369,7 +412,11 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার বাইরে (সারাদেশ)</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || isFreeShippingCoupon ? 'ফ্রি' : '৳১৩০'}
+                        {currentBundle.freeDelivery || isFreeShippingCoupon
+                          ? 'ফ্রি'
+                          : deliverySettings
+                            ? `৳${deliverySettings.outsideDhakaDeliveryFee.toLocaleString()}`
+                            : 'লোড হচ্ছে...'}
                       </span>
                     </label>
                   </div>
@@ -698,9 +745,14 @@ export default function WooCommerceCheckout({
                     অর্ডারটি সংরক্ষণ করা যায়নি: {submissionError}
                   </p>
                 )}
+                {deliverySettingsError && (
+                  <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
+                    {deliverySettingsError}
+                  </p>
+                )}
                 <button
                   type="submit"
-                  disabled={isSubmitting || isOutOfStock || exceedsAvailableStock}
+                  disabled={isSubmitting || !deliverySettings || isOutOfStock || exceedsAvailableStock}
                   className="w-full mt-5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-extrabold text-base sm:text-lg py-4 px-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-red-400/40"
                 >
                   {isSubmitting ? (

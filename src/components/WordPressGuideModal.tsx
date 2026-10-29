@@ -263,16 +263,9 @@ body, .elementor, .woocommerce-checkout {
                   </h4>
                   <p className="text-stone-600 mt-1 leading-relaxed">
                     <code>WooCommerce &gt; Settings &gt; Payments</code> থেকে <strong>Cash on delivery</strong> অন করে দিন।
-                    <br />
-                    <code>WooCommerce &gt; Settings &gt; Shipping</code> থেকে দুটি জোন তৈরি করুন:
                   </p>
-                  <div className="mt-2 bg-stone-50 p-3 rounded-lg border border-stone-200 text-xs flex gap-4">
-                    <div>
-                      <span className="font-bold">১. Inside Dhaka:</span> Flat Rate ৳70
-                    </div>
-                    <div>
-                      <span className="font-bold">২. Outside Dhaka:</span> Flat Rate ৳130
-                    </div>
+                  <div className="mt-2 rounded-lg border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600">
+                    ঢাকার ভেতরে ও বাইরে ডেলিভারি চার্জ Admin Dashboard-এর <strong>সেটিংস</strong> ট্যাব থেকে নির্ধারণ করুন।
                   </div>
                 </div>
               </div>

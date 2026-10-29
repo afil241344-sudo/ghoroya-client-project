@@ -42,6 +42,12 @@ create table if not exists public.coupons (
   is_active boolean not null default true
 );
 
+create table if not exists public.store_settings (
+  id text primary key check (id = 'default'),
+  dhaka_delivery_fee numeric not null check (dhaka_delivery_fee >= 0),
+  outside_dhaka_delivery_fee numeric not null check (outside_dhaka_delivery_fee >= 0)
+);
+
 create table if not exists public.orders (
   id text primary key,
   order_id text not null unique,
@@ -88,6 +94,7 @@ declare
   requested_delivery_charge numeric;
   authoritative_unit_price numeric;
   bundle_has_free_delivery boolean;
+  settings_row public.store_settings;
   coupon_row public.coupons;
   calculated_discount numeric := 0;
   calculated_total numeric;
@@ -113,10 +120,17 @@ begin
     end if;
     requested_item_subtotal := authoritative_unit_price * requested_quantity;
   end if;
+  select * into settings_row
+  from public.store_settings
+  where id = 'default';
+  if not found then
+    raise exception 'DELIVERY_SETTINGS_NOT_CONFIGURED';
+  end if;
+
   if order_data->>'delivery_area' = 'dhaka' then
-    requested_delivery_charge := case when bundle_has_free_delivery then 0 else 70 end;
+    requested_delivery_charge := case when bundle_has_free_delivery then 0 else settings_row.dhaka_delivery_fee end;
   elsif order_data->>'delivery_area' = 'outside_dhaka' then
-    requested_delivery_charge := case when bundle_has_free_delivery then 0 else 130 end;
+    requested_delivery_charge := case when bundle_has_free_delivery then 0 else settings_row.outside_dhaka_delivery_fee end;
   else
     raise exception 'INVALID_DELIVERY_AREA';
   end if;
@@ -270,6 +284,7 @@ alter table public.orders add constraint orders_status_check
 alter table public.products enable row level security;
 alter table public.combos enable row level security;
 alter table public.coupons enable row level security;
+alter table public.store_settings enable row level security;
 alter table public.orders enable row level security;
 
 drop policy if exists "Catalog is public to read" on public.products;
@@ -299,6 +314,15 @@ create policy "Admins manage coupons"
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
+drop policy if exists "Delivery settings are public to read" on public.store_settings;
+create policy "Delivery settings are public to read"
+  on public.store_settings for select to anon, authenticated using (true);
+drop policy if exists "Admins manage delivery settings" on public.store_settings;
+create policy "Admins manage delivery settings"
+  on public.store_settings for all to authenticated
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
 drop policy if exists "Customers can place pending orders" on public.orders;
 drop policy if exists "Admins manage orders" on public.orders;
 create policy "Admins manage orders"
@@ -312,6 +336,10 @@ values
   ('EID100', 'fixed', 100, 2, true),
   ('FREESHIP', 'free_shipping', 0, 1, true)
 on conflict (code) do nothing;
+
+insert into public.store_settings (id, dhaka_delivery_fee, outside_dhaka_delivery_fee)
+values ('default', 70, 130)
+on conflict (id) do nothing;
 
 insert into public.products (
   id, name, sku, category, unit_weight, cost_price, regular_price,

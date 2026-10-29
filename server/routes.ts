@@ -74,7 +74,14 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
     if (bundle.freeDelivery || couponCode === 'FREESHIP') {
       deliveryCharge = 0;
     } else {
-      deliveryCharge = deliveryArea === 'dhaka' ? 70 : 130;
+      const settings = db.getSettings();
+      if (deliveryArea === 'dhaka') {
+        deliveryCharge = settings.dhakaDeliveryFee;
+      } else if (deliveryArea === 'outside_dhaka') {
+        deliveryCharge = settings.outsideDhakaDeliveryFee;
+      } else {
+        return res.status(400).json({ success: false, error: 'Invalid delivery area' });
+      }
     }
 
     // Coupon calculation

@@ -32,6 +32,7 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Settings,
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
 import {
@@ -50,6 +51,9 @@ import {
   createCoupon,
   updateCoupon,
   deleteCoupon,
+  fetchDeliverySettings,
+  updateDeliverySettings,
+  StoreDeliverySettings,
   BackendOrder,
   BackendCombo,
   ProductItem,
@@ -189,15 +193,17 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Tab State: 'orders' | 'combos' | 'products' | 'coupons'
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons'>('orders');
+  // Tab State: 'orders' | 'combos' | 'products' | 'coupons' | 'settings'
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'settings'>('orders');
 
   // Data states
   const [orders, setOrders] = useState<BackendOrder[]>([]);
   const [combos, setCombos] = useState<BackendCombo[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [coupons, setCoupons] = useState<DBCoupon[]>([]);
+  const [deliverySettings, setDeliverySettings] = useState<StoreDeliverySettings | null>(null);
   const [isSavingCoupon, setIsSavingCoupon] = useState(false);
+  const [isSavingDeliverySettings, setIsSavingDeliverySettings] = useState(false);
   const [couponForm, setCouponForm] = useState({
     code: '',
     discountType: 'fixed' as DBCoupon['discountType'],
@@ -249,16 +255,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons] = await Promise.all([
+      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings] = await Promise.all([
         fetchAllOrders(),
         seedInitialCombosIfEmpty(),
         seedInitialProductsCatalogIfEmpty(),
         fetchAllCoupons(),
+        fetchDeliverySettings(),
       ]);
       setOrders(fetchedOrders);
       setCombos(fetchedCombos);
       setProductsList(fetchedProducts);
       setCoupons(fetchedCoupons);
+      setDeliverySettings(fetchedDeliverySettings);
     } catch (err) {
       console.error('Error fetching admin data:', err);
       showToast(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
@@ -301,10 +309,12 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       seedInitialCombosIfEmpty(),
       seedInitialProductsCatalogIfEmpty(),
       fetchAllCoupons(),
-    ]).then(([cList, pList, couponList]) => {
+      fetchDeliverySettings(),
+    ]).then(([cList, pList, couponList, fetchedDeliverySettings]) => {
       setCombos(cList);
       setProductsList(pList);
       setCoupons(couponList);
+      setDeliverySettings(fetchedDeliverySettings);
       setIsLoading(false);
     }).catch((error: unknown) => {
       console.error('Could not load catalog data from Supabase:', error);
@@ -570,6 +580,31 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     } catch (error) {
       console.error('Could not delete coupon:', error);
       showToast(error instanceof Error ? error.message : 'কুপন মুছে ফেলা যায়নি।');
+    }
+  };
+
+  const handleSaveDeliverySettings = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!deliverySettings) return;
+    if (
+      !Number.isFinite(deliverySettings.dhakaDeliveryFee) ||
+      !Number.isFinite(deliverySettings.outsideDhakaDeliveryFee) ||
+      deliverySettings.dhakaDeliveryFee < 0 ||
+      deliverySettings.outsideDhakaDeliveryFee < 0
+    ) {
+      showToast('ডেলিভারি চার্জ শূন্য বা তার বেশি সংখ্যা হতে হবে।');
+      return;
+    }
+
+    setIsSavingDeliverySettings(true);
+    try {
+      await updateDeliverySettings(deliverySettings);
+      showToast('ডেলিভারি চার্জ আপডেট হয়েছে।');
+    } catch (error) {
+      console.error('Could not update delivery settings:', error);
+      showToast(error instanceof Error ? error.message : 'ডেলিভারি চার্জ আপডেট করা যায়নি।');
+    } finally {
+      setIsSavingDeliverySettings(false);
     }
   };
 
@@ -1027,8 +1062,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           </div>
         </div>
 
-        {/* Tab Controls: Orders | Combos Table | Products Table | Coupons */}
-        <div className="grid grid-cols-4 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
+        {/* Tab Controls: Orders | Combos Table | Products Table | Coupons | Settings */}
+        <div className="grid grid-cols-5 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
@@ -1084,6 +1119,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           >
             <Tag className="w-4 h-4" />
             <span className="truncate sm:whitespace-nowrap">কুপন ({coupons.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+              activeTab === 'settings'
+                ? 'border-emerald-700 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span className="truncate sm:whitespace-nowrap">সেটিংস</span>
           </button>
         </div>
 
@@ -2756,6 +2803,70 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     </article>
                   ))}
                 </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="min-w-0 space-y-6 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="max-w-3xl rounded-xl border border-stone-200 bg-stone-50 p-4 sm:p-6">
+              <div className="mb-5">
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900 sm:text-lg">
+                  <Truck className="h-5 w-5 text-emerald-700" />
+                  ডেলিভারি চার্জ সেটিংস
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  এখানে পরিবর্তন করলে checkout-এ দেখানো charge ও order total—দুটিই আপডেট হবে।
+                </p>
+              </div>
+              {!deliverySettings ? (
+                <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">
+                  ডেলিভারি সেটিংস লোড করা যায়নি। Supabase schema চালানো আছে কি না দেখুন এবং আবার রিফ্রেশ করুন।
+                </p>
+              ) : (
+                <form onSubmit={handleSaveDeliverySettings} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-stone-700">
+                      ঢাকার ভেতরে (৳)
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={deliverySettings.dhakaDeliveryFee}
+                        onChange={(event) => setDeliverySettings({
+                          ...deliverySettings,
+                          dhakaDeliveryFee: Number(event.target.value),
+                        })}
+                        className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                    <label className="text-sm font-semibold text-stone-700">
+                      ঢাকার বাইরে (৳)
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={deliverySettings.outsideDhakaDeliveryFee}
+                        onChange={(event) => setDeliverySettings({
+                          ...deliverySettings,
+                          outsideDhakaDeliveryFee: Number(event.target.value),
+                        })}
+                        className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isSavingDeliverySettings}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingDeliverySettings ? 'সেভ হচ্ছে...' : 'চার্জ সেভ করুন'}
+                  </button>
+                </form>
               )}
             </section>
           </div>
