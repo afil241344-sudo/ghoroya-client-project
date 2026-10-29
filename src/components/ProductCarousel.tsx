@@ -98,14 +98,24 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAllProducts().then((items) => {
-      if (items && items.length > 0) {
-        setProducts(items);
-      }
-    }).catch((error: unknown) => {
-      console.error('Could not fetch products from Supabase:', error);
-      setLoadError(error instanceof Error ? error.message : 'প্রোডাক্ট লোড করা যায়নি');
-    });
+    let isMounted = true;
+    const refreshProducts = () => {
+      void fetchAllProducts().then((items) => {
+        if (isMounted && items.length > 0) setProducts(items);
+      }).catch((error: unknown) => {
+        console.error('Could not fetch products from Supabase:', error);
+        if (isMounted) {
+          setLoadError(error instanceof Error ? error.message : 'প্রোডাক্ট লোড করা যায়নি');
+        }
+      });
+    };
+
+    refreshProducts();
+    window.addEventListener('inventory-updated', refreshProducts);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('inventory-updated', refreshProducts);
+    };
   }, []);
 
   const galleryProducts = Array.from(
@@ -175,11 +185,11 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
                   <button
                     type="button"
                     onClick={() => handleOrderClick(product)}
-                    disabled={!product.inStock}
+                    disabled={!product.inStock || product.stockQuantity <= 0}
                     className="inline-flex items-center gap-1 rounded-lg bg-amber-700 px-2 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50 sm:px-3 sm:text-xs"
                   >
                     <ShoppingBag className="h-3 w-3" />
-                    অর্ডার
+                    {!product.inStock || product.stockQuantity <= 0 ? 'স্টক শেষ' : 'অর্ডার'}
                   </button>
                 </div>
               </div>

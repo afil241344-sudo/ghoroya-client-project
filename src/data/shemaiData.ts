@@ -13,6 +13,8 @@ export const SHEMAI_BUNDLES: ShemaiBundle[] = [
     badge: 'জনপ্রিয় ট্রায়াল',
     badgeColor: 'bg-amber-600',
     freeDelivery: false,
+    inStock: true,
+    stockCount: 120,
     description: 'খাঁটি গাওয়া ঘি, প্রিমিয়াম জাফরান ফ্লেভার এবং মুচমুচে সুস্বাদু কারিগরি তৈরি।'
   },
   {
@@ -27,6 +29,8 @@ export const SHEMAI_BUNDLES: ShemaiBundle[] = [
     badge: 'সেরা অফার (Best Choice)',
     badgeColor: 'bg-emerald-700',
     freeDelivery: false,
+    inStock: true,
+    stockCount: 85,
     popular: true,
     description: 'পরিবারের সবার সাথে আনন্দ ভাগ করে নিতে সবচেয়ে জনপ্রিয় কম্বো। সেভ হবে ৩১০ টাকা!'
   },
@@ -42,6 +46,8 @@ export const SHEMAI_BUNDLES: ShemaiBundle[] = [
     badge: 'ফ্রি ডেলিভারি + মেগা সেভিংস',
     badgeColor: 'bg-rose-700',
     freeDelivery: true,
+    inStock: true,
+    stockCount: 40,
     description: 'আত্মীয়-স্বজন ও মেহমানদারির জন্য উপযুক্ত। কোনো ডেলিভারি চার্জ লাগবে না!'
   }
 ];

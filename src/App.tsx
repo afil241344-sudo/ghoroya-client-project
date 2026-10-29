@@ -15,7 +15,7 @@ import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
 import { SHEMAI_BUNDLES, CUSTOMER_REVIEWS } from './data/shemaiData';
 import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
-import { seedInitialCombosIfEmpty } from './services/dbService';
+import { fetchAllProducts, seedInitialCombosIfEmpty } from './services/dbService';
 import { useCurrentRoute } from './router';
 
 export default function App() {
@@ -39,8 +39,32 @@ export default function App() {
     });
   }, [currentRoute]);
 
+  useEffect(() => {
+    const refreshBundleStock = () => {
+      void Promise.all([seedInitialCombosIfEmpty(), fetchAllProducts()]).then(([freshCombos, products]) => {
+        setBundles((currentBundles) => {
+          const currentProducts = currentBundles
+            .filter((bundle) => !freshCombos.some((combo) => combo.id === bundle.id))
+            .map((bundle) => {
+              const product = products.find((item) => item.id === bundle.id);
+              return product
+                ? { ...bundle, inStock: product.inStock, stockCount: product.stockQuantity }
+                : bundle;
+            });
+          return [...freshCombos, ...currentProducts];
+        });
+      }).catch((error: unknown) => {
+        console.error('Could not refresh combo stock after order:', error);
+      });
+    };
+
+    window.addEventListener('inventory-updated', refreshBundleStock);
+    return () => window.removeEventListener('inventory-updated', refreshBundleStock);
+  }, []);
+
   const handleOrderSuccess = (order: PlacedOrder) => {
     setPlacedOrder(order);
+    window.dispatchEvent(new Event('inventory-updated'));
   };
 
   const handleSelectProduct = (product: ProductItem) => {
@@ -58,6 +82,7 @@ export default function App() {
       freeDelivery: false,
       description: product.description,
       inStock: product.inStock,
+      stockCount: product.stockQuantity,
     };
 
     setBundles((prev) => {

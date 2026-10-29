@@ -1,8 +1,8 @@
-import { useState, useId } from 'react';
+import { useState, useId, useEffect } from 'react';
 import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle } from 'lucide-react';
 import { ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import { saveOrderToSupabase } from '../services/dbService';
+import { InsufficientStockError, saveOrderToSupabase } from '../services/dbService';
 
 interface WooCommerceCheckoutProps {
   bundles: ShemaiBundle[];
@@ -20,6 +20,8 @@ export default function WooCommerceCheckout({
   const formId = useId();
   const currentBundle =
     bundles.find((b) => b.id === selectedBundleId) || bundles[0];
+  const availableStock = currentBundle.stockCount;
+  const isOutOfStock = currentBundle.inStock === false || availableStock === 0;
 
   const [quantity, setQuantity] = useState(1);
   const [fullName, setFullName] = useState('');
@@ -35,6 +37,18 @@ export default function WooCommerceCheckout({
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const exceedsAvailableStock = availableStock !== undefined && quantity > availableStock;
+
+  useEffect(() => {
+    setQuantity(1);
+    setSubmissionError(null);
+  }, [currentBundle.id]);
+
+  useEffect(() => {
+    if (availableStock !== undefined && availableStock > 0) {
+      setQuantity((currentQuantity) => Math.min(currentQuantity, availableStock));
+    }
+  }, [availableStock]);
 
   // Price calculations
   const itemSubtotal = currentBundle.salePrice * quantity;
@@ -121,6 +135,14 @@ export default function WooCommerceCheckout({
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOutOfStock) {
+      setSubmissionError('দুঃখিত, এই পণ্যটি বর্তমানে স্টকে নেই।');
+      return;
+    }
+    if (exceedsAvailableStock) {
+      setSubmissionError(`এই পণ্যের স্টক ${availableStock} টি। অনুগ্রহ করে পরিমাণ কমিয়ে আবার চেষ্টা করুন।`);
+      return;
+    }
     if (!validateForm()) {
       return;
     }
@@ -161,8 +183,13 @@ export default function WooCommerceCheckout({
       onOrderSuccess(placedOrder);
     } catch (error) {
       console.error('Supabase order save failed:', error);
+      window.dispatchEvent(new Event('inventory-updated'));
       setSubmissionError(
-        error instanceof Error ? error.message : 'অর্ডার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',
+        error instanceof InsufficientStockError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'অর্ডার সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',
       );
     } finally {
       setIsSubmitting(false);
@@ -380,8 +407,13 @@ export default function WooCommerceCheckout({
                     className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-[#fdfbf7] text-xs sm:text-sm font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
                   >
                     {bundles.map((b) => (
-                      <option key={b.id} value={b.id}>
+                      <option
+                        key={b.id}
+                        value={b.id}
+                        disabled={b.inStock === false || b.stockCount === 0}
+                      >
                         {b.name} — ৳{b.salePrice} ({b.weight})
+                        {b.inStock === false || b.stockCount === 0 ? ' — স্টক শেষ' : ''}
                       </option>
                     ))}
                   </select>
@@ -412,8 +444,13 @@ export default function WooCommerceCheckout({
                   <div className="flex items-center border border-stone-300 rounded-lg bg-white overflow-hidden shadow-xs">
                     <button
                       type="button"
-                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer"
+                      onClick={() => {
+                        setQuantity(Math.max(1, quantity - 1));
+                        setSubmissionError(null);
+                      }}
+                      disabled={quantity <= 1 || isSubmitting}
+                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="পরিমাণ কমান"
                     >
                       -
                     </button>
@@ -422,13 +459,31 @@ export default function WooCommerceCheckout({
                     </span>
                     <button
                       type="button"
-                      onClick={() => setQuantity(quantity + 1)}
-                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer"
+                      onClick={() => {
+                        setQuantity((currentQuantity) => currentQuantity + 1);
+                        setSubmissionError(null);
+                      }}
+                      disabled={
+                        isSubmitting ||
+                        isOutOfStock ||
+                        (availableStock !== undefined && quantity >= availableStock)
+                      }
+                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="পরিমাণ বাড়ান"
                     >
                       +
                     </button>
                   </div>
                 </div>
+                <p className={`-mt-2 mb-4 text-right text-xs font-semibold ${
+                  isOutOfStock ? 'text-rose-700' : 'text-emerald-700'
+                }`}>
+                  {isOutOfStock
+                    ? 'এই পণ্যটি বর্তমানে স্টকে নেই'
+                    : availableStock !== undefined
+                      ? `স্টকে আছে ${availableStock} টি`
+                      : ''}
+                </p>
 
                 {/* Coupon Code Section */}
                 <div className="mb-4">
@@ -606,7 +661,7 @@ export default function WooCommerceCheckout({
                 )}
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isOutOfStock || exceedsAvailableStock}
                   className="w-full mt-5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-extrabold text-base sm:text-lg py-4 px-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-red-400/40"
                 >
                   {isSubmitting ? (

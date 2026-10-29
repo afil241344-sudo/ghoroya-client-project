@@ -52,11 +52,151 @@ create table if not exists public.orders (
   total_amount numeric not null,
   status text not null default 'pending'
     check (status in ('pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled')),
+  stock_deducted boolean not null default false,
   courier_name text,
   courier_tracking_code text,
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
+
+alter table public.orders
+  add column if not exists stock_deducted boolean not null default false;
+
+create or replace function public.place_order_with_stock(order_data jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  requested_bundle_id text := order_data->>'bundle_id';
+  requested_quantity integer := (order_data->>'quantity')::integer;
+  order_row public.orders;
+begin
+  if requested_bundle_id is null or requested_quantity is null or requested_quantity < 1 then
+    raise exception 'INVALID_ORDER_QUANTITY';
+  end if;
+
+  if exists (select 1 from public.combos where id = requested_bundle_id) then
+    update public.combos
+    set stock_count = stock_count - requested_quantity,
+        in_stock = stock_count - requested_quantity > 0
+    where id = requested_bundle_id
+      and in_stock
+      and stock_count >= requested_quantity;
+    if not found then
+      raise exception 'INSUFFICIENT_STOCK';
+    end if;
+  else
+    update public.products
+    set stock_quantity = stock_quantity - requested_quantity,
+        in_stock = stock_quantity - requested_quantity > 0
+    where id = requested_bundle_id
+      and in_stock
+      and stock_quantity >= requested_quantity;
+    if not found then
+      if exists (select 1 from public.products where id = requested_bundle_id) then
+        raise exception 'INSUFFICIENT_STOCK';
+      end if;
+      raise exception 'PRODUCT_NOT_FOUND';
+    end if;
+  end if;
+
+  insert into public.orders (
+    id, order_id, customer_name, customer_phone, customer_address, delivery_area,
+    note, payment_method, bkash_tx_id, bundle_id, bundle_name, quantity,
+    item_subtotal, delivery_charge, discount, total_amount, status, created_at, stock_deducted
+  ) values (
+    order_data->>'id',
+    order_data->>'order_id',
+    order_data->>'customer_name',
+    order_data->>'customer_phone',
+    order_data->>'customer_address',
+    order_data->>'delivery_area',
+    coalesce(order_data->>'note', ''),
+    order_data->>'payment_method',
+    coalesce(order_data->>'bkash_tx_id', ''),
+    requested_bundle_id,
+    order_data->>'bundle_name',
+    requested_quantity,
+    (order_data->>'item_subtotal')::numeric,
+    (order_data->>'delivery_charge')::numeric,
+    (order_data->>'discount')::numeric,
+    (order_data->>'total_amount')::numeric,
+    'pending',
+    coalesce((order_data->>'created_at')::timestamptz, now()),
+    true
+  )
+  returning * into order_row;
+
+  return to_jsonb(order_row);
+end;
+$$;
+
+revoke all on function public.place_order_with_stock(jsonb) from public;
+grant execute on function public.place_order_with_stock(jsonb) to anon, authenticated;
+
+create or replace function public.sync_order_stock_on_status_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.status = old.status then
+    return new;
+  end if;
+
+  if new.status = 'cancelled' and old.status <> 'cancelled' and old.stock_deducted then
+    if exists (select 1 from public.combos where id = old.bundle_id) then
+      update public.combos
+      set stock_count = stock_count + old.quantity,
+          in_stock = true
+      where id = old.bundle_id;
+    elsif exists (select 1 from public.products where id = old.bundle_id) then
+      update public.products
+      set stock_quantity = stock_quantity + old.quantity,
+          in_stock = true
+      where id = old.bundle_id;
+    else
+      raise exception 'PRODUCT_NOT_FOUND';
+    end if;
+    new.stock_deducted := false;
+  elsif old.status = 'cancelled' and new.status <> 'cancelled' and not old.stock_deducted then
+    if exists (select 1 from public.combos where id = old.bundle_id) then
+      update public.combos
+      set stock_count = stock_count - old.quantity,
+          in_stock = stock_count - old.quantity > 0
+      where id = old.bundle_id
+        and in_stock
+        and stock_count >= old.quantity;
+    elsif exists (select 1 from public.products where id = old.bundle_id) then
+      update public.products
+      set stock_quantity = stock_quantity - old.quantity,
+          in_stock = stock_quantity - old.quantity > 0
+      where id = old.bundle_id
+        and in_stock
+        and stock_quantity >= old.quantity;
+    else
+      raise exception 'PRODUCT_NOT_FOUND';
+    end if;
+    if not found then
+      raise exception 'INSUFFICIENT_STOCK';
+    end if;
+    new.stock_deducted := true;
+  end if;
+
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+revoke all on function public.sync_order_stock_on_status_change() from public, anon, authenticated;
+drop trigger if exists orders_sync_stock_on_status_change on public.orders;
+create trigger orders_sync_stock_on_status_change
+  before update of status on public.orders
+  for each row
+  execute function public.sync_order_stock_on_status_change();
 
 alter table public.orders drop constraint if exists orders_status_check;
 alter table public.orders add constraint orders_status_check
@@ -85,9 +225,6 @@ create policy "Admins manage combos"
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 drop policy if exists "Customers can place pending orders" on public.orders;
-create policy "Customers can place pending orders"
-  on public.orders for insert to anon, authenticated
-  with check (status = 'pending');
 drop policy if exists "Admins manage orders" on public.orders;
 create policy "Admins manage orders"
   on public.orders for all to authenticated

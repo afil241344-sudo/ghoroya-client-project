@@ -354,7 +354,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           prev.map((order) => (order.orderId === orderId ? { ...order, status: previousStatus } : order))
         );
       }
-      showToast('স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।');
+      showToast(
+        err instanceof Error && err.message.includes('INSUFFICIENT_STOCK')
+          ? 'স্টক অপর্যাপ্ত, তাই বাতিল অর্ডারটি আবার চালু করা যায়নি।'
+          : 'স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।',
+      );
     } finally {
       setUpdatingOrderId(null);
     }

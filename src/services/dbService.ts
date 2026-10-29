@@ -102,6 +102,13 @@ const DEFAULT_COMBOS: BackendCombo[] = SHEMAI_BUNDLES.map((bundle, index) => ({
   includedProductIds: `prod-shemai-450 (${[1, 2, 4][index] ?? 1}x)`,
 }));
 
+export class InsufficientStockError extends Error {
+  constructor(message = 'এই পণ্যের পর্যাপ্ত স্টক নেই।') {
+    super(message);
+    this.name = 'InsufficientStockError';
+  }
+}
+
 function toDatabaseRow<T extends object>(record: T): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(record)
@@ -225,13 +232,20 @@ export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<Bac
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
-  const { data, error } = await getSupabaseClient()
-    .from(ORDERS_TABLE)
-    .insert(toDatabaseRow(orderRecord))
-    .select()
-    .single();
-  throwOnError(error);
-  return fromDatabaseRow<BackendOrder>(data);
+  const { data, error } = await getSupabaseClient().rpc('place_order_with_stock', {
+    order_data: toDatabaseRow(orderRecord),
+  });
+  if (error) {
+    if (error.message.includes('INSUFFICIENT_STOCK')) {
+      throw new InsufficientStockError();
+    }
+    if (error.message.includes('PRODUCT_NOT_FOUND')) {
+      throw new Error('পণ্যটি আর পাওয়া যাচ্ছে না। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।');
+    }
+    throw new Error(error.message);
+  }
+  if (!data) throw new Error('Supabase did not return the created order.');
+  return fromDatabaseRow<BackendOrder>(data as Record<string, unknown>);
 }
 
 export async function fetchAllOrders(): Promise<BackendOrder[]> {

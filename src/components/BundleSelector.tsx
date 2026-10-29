@@ -45,12 +45,18 @@ export default function BundleSelector({
             return (
               <div
                 key={bundle.id}
-                onClick={() => onSelectBundle(bundle.id)}
+                onClick={() => {
+                  if (bundle.inStock !== false && (bundle.stockCount === undefined || bundle.stockCount > 0)) {
+                    onSelectBundle(bundle.id);
+                  }
+                }}
                 className={`relative rounded-2xl bg-white p-5 sm:p-6 flex flex-col justify-between transition-all duration-300 cursor-pointer border-2 shadow-sm hover:shadow-xl ${
                   isSelected
                     ? 'border-emerald-600 ring-4 ring-emerald-500/20 transform -translate-y-1'
                     : 'border-stone-200 hover:border-amber-400'
-                } ${bundle.popular ? 'md:-translate-y-2 border-amber-500' : ''}`}
+                } ${bundle.popular ? 'md:-translate-y-2 border-amber-500' : ''} ${
+                  bundle.inStock === false || bundle.stockCount === 0 ? 'cursor-not-allowed opacity-70' : ''
+                }`}
               >
                 {/* Top Badge */}
                 {bundle.badge && (
@@ -152,24 +158,38 @@ export default function BundleSelector({
                   <p className="mt-3 text-xs sm:text-sm text-stone-600 leading-relaxed">
                     {bundle.description}
                   </p>
+                  {bundle.stockCount !== undefined && (
+                    <p className={`mt-2 text-xs font-semibold ${
+                      bundle.stockCount > 0 && bundle.inStock !== false ? 'text-emerald-700' : 'text-rose-700'
+                    }`}>
+                      {bundle.stockCount > 0 && bundle.inStock !== false
+                        ? `স্টক আছে: ${bundle.stockCount} টি`
+                        : 'স্টক শেষ'}
+                    </p>
+                  )}
                 </div>
 
                 {/* Bottom Select Action */}
                 <div className="mt-5 pt-3.5 border-t border-stone-100">
                   <button
                     type="button"
+                    disabled={bundle.inStock === false || bundle.stockCount === 0}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSelect(bundle.id);
                     }}
-                    className={`w-full py-2.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    className={`w-full py-2.5 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${
                       isSelected
                         ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md'
                         : 'bg-stone-100 hover:bg-amber-100 text-stone-800 hover:text-amber-900 border border-stone-200'
                     }`}
                   >
-                    <span>{isSelected ? '✓ নির্বাচিত প্যাকেজ' : 'এই প্যাকেজটি নিন'}</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span>{bundle.inStock === false || bundle.stockCount === 0
+                      ? 'স্টক শেষ'
+                      : isSelected
+                        ? '✓ নির্বাচিত প্যাকেজ'
+                        : 'এই প্যাকেজটি নিন'}</span>
+                    {bundle.inStock !== false && bundle.stockCount !== 0 && <ArrowRight className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
