@@ -46,10 +46,15 @@ import {
   createProductItem,
   updateProductItem,
   deleteProductItem,
+  fetchAllCoupons,
+  createCoupon,
+  updateCoupon,
+  deleteCoupon,
   BackendOrder,
   BackendCombo,
   ProductItem,
 } from '../services/dbService';
+import { DBCoupon } from '../types';
 import { uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 import { getBundleImage } from '../utils/bundleImages';
@@ -133,6 +138,7 @@ function buildInvoicesHtml(orders: BackendOrder[], combos: BackendCombo[]): stri
         <section class="totals">
           <div><span>Delivery</span><span>৳${order.deliveryCharge.toLocaleString()}</span></div>
           <div><span>Discount</span><span>- ৳${order.discount.toLocaleString()}</span></div>
+          ${order.couponCode ? `<div><span>Coupon</span><span>${escapeHtml(order.couponCode)}</span></div>` : ''}
           <div class="grand-total"><strong>Total</strong><strong>৳${order.totalAmount.toLocaleString()}</strong></div>
         </section>
         <footer>Thank you for your order.</footer>
@@ -183,13 +189,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Tab State: 'orders' | 'combos' | 'products'
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products'>('orders');
+  // Tab State: 'orders' | 'combos' | 'products' | 'coupons'
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons'>('orders');
 
   // Data states
   const [orders, setOrders] = useState<BackendOrder[]>([]);
   const [combos, setCombos] = useState<BackendCombo[]>([]);
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
+  const [coupons, setCoupons] = useState<DBCoupon[]>([]);
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    discountType: 'fixed' as DBCoupon['discountType'],
+    discountAmount: 50,
+    minQuantity: 1,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -235,14 +249,16 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      const [fetchedOrders, fetchedCombos, fetchedProducts] = await Promise.all([
+      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons] = await Promise.all([
         fetchAllOrders(),
         seedInitialCombosIfEmpty(),
         seedInitialProductsCatalogIfEmpty(),
+        fetchAllCoupons(),
       ]);
       setOrders(fetchedOrders);
       setCombos(fetchedCombos);
       setProductsList(fetchedProducts);
+      setCoupons(fetchedCoupons);
     } catch (err) {
       console.error('Error fetching admin data:', err);
       showToast(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
@@ -284,9 +300,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     Promise.all([
       seedInitialCombosIfEmpty(),
       seedInitialProductsCatalogIfEmpty(),
-    ]).then(([cList, pList]) => {
+      fetchAllCoupons(),
+    ]).then(([cList, pList, couponList]) => {
       setCombos(cList);
       setProductsList(pList);
+      setCoupons(couponList);
       setIsLoading(false);
     }).catch((error: unknown) => {
       console.error('Could not load catalog data from Supabase:', error);
@@ -499,6 +517,59 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       await deleteProductItem(productId);
       setProductsList((prev) => prev.filter((p) => p.id !== productId));
       showToast(`প্রোডাক্ট '${productName}' মুছে ফেলা হয়েছে!`);
+    }
+  };
+
+  const handleCreateCoupon = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const code = couponForm.code.trim().toUpperCase();
+    if (!/^[A-Z0-9_-]+$/.test(code)) {
+      showToast('কুপন কোডে শুধু ইংরেজি অক্ষর, সংখ্যা, - এবং _ ব্যবহার করুন।');
+      return;
+    }
+
+    setIsSavingCoupon(true);
+    try {
+      const created = await createCoupon({
+        ...couponForm,
+        code,
+        discountAmount: couponForm.discountType === 'fixed' ? Number(couponForm.discountAmount) : 0,
+        minQuantity: Number(couponForm.minQuantity),
+        isActive: true,
+      });
+      setCoupons((current) => [...current, created].sort((a, b) => a.code.localeCompare(b.code)));
+      setCouponForm({ code: '', discountType: 'fixed', discountAmount: 50, minQuantity: 1 });
+      showToast(`কুপন ${created.code} তৈরি হয়েছে।`);
+    } catch (error) {
+      console.error('Could not create coupon:', error);
+      showToast(error instanceof Error ? error.message : 'কুপন তৈরি করা যায়নি।');
+    } finally {
+      setIsSavingCoupon(false);
+    }
+  };
+
+  const handleToggleCoupon = async (coupon: DBCoupon) => {
+    try {
+      await updateCoupon(coupon.id, { isActive: !coupon.isActive });
+      setCoupons((current) =>
+        current.map((item) => item.id === coupon.id ? { ...item, isActive: !item.isActive } : item),
+      );
+      showToast(`${coupon.code} কুপন ${coupon.isActive ? 'নিষ্ক্রিয়' : 'সক্রিয়'} করা হয়েছে।`);
+    } catch (error) {
+      console.error('Could not update coupon:', error);
+      showToast(error instanceof Error ? error.message : 'কুপন আপডেট করা যায়নি।');
+    }
+  };
+
+  const handleDeleteCoupon = async (coupon: DBCoupon) => {
+    if (!window.confirm(`আপনি কি ${coupon.code} কুপনটি মুছে ফেলতে চান?`)) return;
+    try {
+      await deleteCoupon(coupon.id);
+      setCoupons((current) => current.filter((item) => item.id !== coupon.id));
+      showToast(`${coupon.code} কুপন মুছে ফেলা হয়েছে।`);
+    } catch (error) {
+      console.error('Could not delete coupon:', error);
+      showToast(error instanceof Error ? error.message : 'কুপন মুছে ফেলা যায়নি।');
     }
   };
 
@@ -956,8 +1027,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           </div>
         </div>
 
-        {/* Tab Controls: Orders | Combos Table | Products Table */}
-        <div className="grid grid-cols-3 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
+        {/* Tab Controls: Orders | Combos Table | Products Table | Coupons */}
+        <div className="grid grid-cols-4 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
@@ -1001,6 +1072,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             <span className="hidden text-[10px] font-semibold sm:block sm:rounded sm:bg-indigo-100 sm:px-1.5 sm:py-0.2 sm:text-indigo-800">
               Products
             </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('coupons')}
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+              activeTab === 'coupons'
+                ? 'border-emerald-700 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            <span className="truncate sm:whitespace-nowrap">কুপন ({coupons.length})</span>
           </button>
         </div>
 
@@ -2553,6 +2636,128 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'coupons' && (
+          <div className="min-w-0 space-y-6 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="rounded-xl border border-stone-200 bg-stone-50 p-4 sm:p-5">
+              <div className="mb-4">
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900 sm:text-lg">
+                  <Tag className="h-5 w-5 text-emerald-700" />
+                  নতুন কুপন তৈরি করুন
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">Fixed discount অথবা free shipping coupon তৈরি ও পরিচালনা করুন।</p>
+              </div>
+              <form onSubmit={handleCreateCoupon} className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="text-xs font-semibold text-stone-700">
+                  Coupon code
+                  <input
+                    required
+                    value={couponForm.code}
+                    onChange={(event) => setCouponForm((current) => ({ ...current, code: event.target.value.toUpperCase() }))}
+                    placeholder="যেমন: EID50"
+                    pattern="[A-Za-z0-9_-]+"
+                    className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm uppercase"
+                  />
+                </label>
+                <label className="text-xs font-semibold text-stone-700">
+                  Discount type
+                  <select
+                    value={couponForm.discountType}
+                    onChange={(event) => setCouponForm((current) => ({
+                      ...current,
+                      discountType: event.target.value as DBCoupon['discountType'],
+                    }))}
+                    className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="fixed">Fixed amount (৳)</option>
+                    <option value="free_shipping">Free shipping</option>
+                  </select>
+                </label>
+                {couponForm.discountType === 'fixed' && (
+                  <label className="text-xs font-semibold text-stone-700">
+                    Discount amount (৳)
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      required
+                      value={couponForm.discountAmount}
+                      onChange={(event) => setCouponForm((current) => ({ ...current, discountAmount: Number(event.target.value) }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                )}
+                <label className="text-xs font-semibold text-stone-700">
+                  Minimum order quantity
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={couponForm.minQuantity}
+                    onChange={(event) => setCouponForm((current) => ({ ...current, minQuantity: Number(event.target.value) }))}
+                    className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm"
+                  />
+                </label>
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <button
+                    type="submit"
+                    disabled={isSavingCoupon}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {isSavingCoupon ? 'তৈরি হচ্ছে...' : 'কুপন তৈরি করুন'}
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <section className="space-y-3">
+              <h3 className="text-sm font-bold text-stone-800">কুপন তালিকা</h3>
+              {coupons.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500">
+                  কোনো কুপন নেই। উপরের ফর্ম থেকে নতুন কুপন যোগ করুন।
+                </p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {coupons.map((coupon) => (
+                    <article key={coupon.id} className="flex items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="font-mono text-sm text-stone-900">{coupon.code}</strong>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            coupon.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                          }`}>{coupon.isActive ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-stone-600">
+                          {coupon.discountType === 'fixed' ? `৳${coupon.discountAmount} ছাড়` : 'ফ্রি ডেলিভারি'}
+                          {' · '}কমপক্ষে {coupon.minQuantity} টি
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleCoupon(coupon)}
+                          className="rounded-lg border border-stone-300 px-2.5 py-1.5 text-[11px] font-semibold text-stone-700 hover:bg-stone-50"
+                        >
+                          {coupon.isActive ? 'বন্ধ করুন' : 'সক্রিয় করুন'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteCoupon(coupon)}
+                          className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                          aria-label={`${coupon.code} মুছুন`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
       </main>

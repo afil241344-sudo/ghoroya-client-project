@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { PlacedOrder, ShemaiBundle, ProductItem } from '../types';
+import { DBCoupon, PlacedOrder, ShemaiBundle, ProductItem } from '../types';
 import { SHEMAI_BUNDLES } from '../data/shemaiData';
 
 export interface BackendOrder {
@@ -19,6 +19,7 @@ export interface BackendOrder {
   deliveryCharge: number;
   discount: number;
   totalAmount: number;
+  couponCode?: string;
   status: 'pending' | 'confirmed' | 'printed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   courierName?: string;
   courierTrackingCode?: string;
@@ -39,6 +40,7 @@ export type { ProductItem };
 const ORDERS_TABLE = 'orders';
 const COMBOS_TABLE = 'combos';
 const PRODUCTS_TABLE = 'products';
+const COUPONS_TABLE = 'coupons';
 
 export const DEFAULT_BASE_PRODUCTS: ProductItem[] = [
   {
@@ -211,6 +213,60 @@ export async function deleteProductItem(productId: string): Promise<void> {
   throwOnError(error);
 }
 
+export async function fetchActiveCoupons(): Promise<DBCoupon[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(COUPONS_TABLE)
+    .select('*')
+    .eq('is_active', true)
+    .order('code');
+  throwOnError(error);
+  if (!data) throw new Error('Supabase returned no coupon records.');
+  return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+}
+
+export async function fetchAllCoupons(): Promise<DBCoupon[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(COUPONS_TABLE)
+    .select('*')
+    .order('code');
+  throwOnError(error);
+  if (!data) throw new Error('Supabase returned no coupon records.');
+  return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+}
+
+export async function createCoupon(
+  coupon: Omit<DBCoupon, 'id'>,
+): Promise<DBCoupon> {
+  const { data, error } = await getSupabaseClient()
+    .from(COUPONS_TABLE)
+    .insert(toDatabaseRow({ ...coupon, code: coupon.code.trim().toUpperCase() }))
+    .select()
+    .single();
+  throwOnError(error);
+  if (!data) throw new Error('Supabase did not return the created coupon.');
+  return fromDatabaseRow<DBCoupon>(data);
+}
+
+export async function updateCoupon(
+  couponId: string,
+  updates: Partial<DBCoupon>,
+): Promise<void> {
+  const { id: _id, ...allowedUpdates } = updates;
+  const { error } = await getSupabaseClient()
+    .from(COUPONS_TABLE)
+    .update(toDatabaseRow(allowedUpdates))
+    .eq('id', couponId);
+  throwOnError(error);
+}
+
+export async function deleteCoupon(couponId: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from(COUPONS_TABLE)
+    .delete()
+    .eq('id', couponId);
+  throwOnError(error);
+}
+
 export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<BackendOrder> {
   const orderRecord: BackendOrder = {
     id: placedOrder.orderId,
@@ -229,6 +285,7 @@ export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<Bac
     deliveryCharge: placedOrder.deliveryCharge,
     discount: placedOrder.discount,
     totalAmount: placedOrder.totalAmount,
+    couponCode: placedOrder.customer.couponCode,
     status: 'pending',
     createdAt: new Date().toISOString(),
   };
@@ -238,6 +295,9 @@ export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<Bac
   if (error) {
     if (error.message.includes('INSUFFICIENT_STOCK')) {
       throw new InsufficientStockError();
+    }
+    if (error.message.includes('INVALID_COUPON')) {
+      throw new Error('কুপনটি আর কার্যকর নেই অথবা আপনার অর্ডারের জন্য প্রযোজ্য নয়।');
     }
     if (error.message.includes('PRODUCT_NOT_FOUND')) {
       throw new Error('পণ্যটি আর পাওয়া যাচ্ছে না। পেজ রিফ্রেশ করে আবার চেষ্টা করুন।');

@@ -1,8 +1,8 @@
 import { useState, useId, useEffect } from 'react';
 import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle } from 'lucide-react';
-import { ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
+import { DBCoupon, ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import { InsufficientStockError, saveOrderToSupabase } from '../services/dbService';
+import { fetchActiveCoupons, InsufficientStockError, saveOrderToSupabase } from '../services/dbService';
 
 interface WooCommerceCheckoutProps {
   bundles: ShemaiBundle[];
@@ -34,6 +34,9 @@ export default function WooCommerceCheckout({
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [activeCoupons, setActiveCoupons] = useState<DBCoupon[]>([]);
+  const [couponLoadError, setCouponLoadError] = useState<string | null>(null);
+  const [isLoadingCoupons, setIsLoadingCoupons] = useState(true);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
@@ -50,24 +53,50 @@ export default function WooCommerceCheckout({
     }
   }, [availableStock]);
 
+  useEffect(() => {
+    let active = true;
+    fetchActiveCoupons()
+      .then((coupons) => {
+        if (active) setActiveCoupons(coupons);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not load active coupons:', error);
+        if (active) setCouponLoadError('কুপন সিস্টেম লোড হয়নি। অনুগ্রহ করে পরে আবার চেষ্টা করুন।');
+      })
+      .finally(() => {
+        if (active) setIsLoadingCoupons(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!appliedCoupon) return;
+    const coupon = activeCoupons.find((item) => item.code === appliedCoupon && item.isActive);
+    if (!coupon) {
+      setAppliedCoupon(null);
+      return;
+    }
+    if (quantity < coupon.minQuantity) {
+      setAppliedCoupon(null);
+      setCouponError(`এই কুপনটি ব্যবহার করতে কমপক্ষে ${coupon.minQuantity} টি পণ্য লাগবে`);
+    }
+  }, [activeCoupons, appliedCoupon, quantity]);
+
   // Price calculations
   const itemSubtotal = currentBundle.salePrice * quantity;
-
-  // Delivery charge calculation
-  let deliveryCharge = 0;
-  if (currentBundle.freeDelivery || appliedCoupon === 'FREESHIP') {
-    deliveryCharge = 0;
-  } else {
-    deliveryCharge = deliveryArea === 'dhaka' ? 70 : 130;
-  }
-
-  // Coupon discount
-  let discount = 0;
-  if (appliedCoupon === 'EID50') {
-    discount = 50;
-  } else if (appliedCoupon === 'EID100' && quantity >= 2) {
-    discount = 100;
-  }
+  const selectedCoupon = activeCoupons.find(
+    (coupon) => coupon.code === appliedCoupon && coupon.isActive && quantity >= coupon.minQuantity,
+  );
+  const isFreeShippingCoupon = selectedCoupon?.discountType === 'free_shipping';
+  const deliveryCharge =
+    currentBundle.freeDelivery || isFreeShippingCoupon
+      ? 0
+      : deliveryArea === 'dhaka' ? 70 : 130;
+  const discount = selectedCoupon?.discountType === 'fixed'
+    ? Math.min(selectedCoupon.discountAmount, itemSubtotal)
+    : 0;
 
   const totalAmount = Math.max(0, itemSubtotal + deliveryCharge - discount);
 
@@ -81,22 +110,24 @@ export default function WooCommerceCheckout({
       return;
     }
 
-    if (cleaned === 'EID50') {
-      setAppliedCoupon('EID50');
-      setCouponInput('');
-    } else if (cleaned === 'FREESHIP') {
-      setAppliedCoupon('FREESHIP');
-      setCouponInput('');
-    } else if (cleaned === 'EID100') {
-      if (quantity >= 2) {
-        setAppliedCoupon('EID100');
-        setCouponInput('');
-      } else {
-        setCouponError('EID100 কুপনটি পেতে কমপক্ষে ২ বক্স বা তার বেশি অর্ডার করুন');
-      }
-    } else {
-      setCouponError('কুপন কোডটি সঠিক নয় বা মেয়াদ শেষ হয়ে গেছে');
+    if (couponLoadError) {
+      return;
     }
+    if (isLoadingCoupons) return;
+
+    const coupon = activeCoupons.find((item) => item.code === cleaned && item.isActive);
+    if (!coupon) {
+      setCouponError('কুপন কোডটি সঠিক নয় বা মেয়াদ শেষ হয়ে গেছে');
+      return;
+    }
+
+    if (quantity < coupon.minQuantity) {
+      setCouponError(`এই কুপনটি পেতে কমপক্ষে ${coupon.minQuantity} টি পণ্য অর্ডার করুন`);
+      return;
+    }
+
+    setAppliedCoupon(coupon.code);
+    setCouponInput('');
   };
 
   const removeCoupon = () => {
@@ -184,6 +215,10 @@ export default function WooCommerceCheckout({
     } catch (error) {
       console.error('Supabase order save failed:', error);
       window.dispatchEvent(new Event('inventory-updated'));
+      if (error instanceof Error && error.message.includes('কুপনটি আর কার্যকর নেই')) {
+        setAppliedCoupon(null);
+        setCouponError(error.message);
+      }
       setSubmissionError(
         error instanceof InsufficientStockError
           ? error.message
@@ -312,7 +347,7 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার ভেতরে</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || appliedCoupon === 'FREESHIP' ? 'ফ্রি' : '৳৭০'}
+                        {currentBundle.freeDelivery || isFreeShippingCoupon ? 'ফ্রি' : '৳৭০'}
                       </span>
                     </label>
 
@@ -334,7 +369,7 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার বাইরে (সারাদেশ)</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || appliedCoupon === 'FREESHIP' ? 'ফ্রি' : '৳১৩০'}
+                        {currentBundle.freeDelivery || isFreeShippingCoupon ? 'ফ্রি' : '৳১৩০'}
                       </span>
                     </label>
                   </div>
@@ -493,6 +528,9 @@ export default function WooCommerceCheckout({
                         <Tag className="w-4 h-4 text-emerald-600" />
                         <span>
                           কুপন <strong>{appliedCoupon}</strong> সক্রিয়!
+                          {selectedCoupon?.discountType === 'fixed'
+                            ? ` — ৳${discount} ছাড়`
+                            : ' — ফ্রি ডেলিভারি'}
                         </span>
                       </div>
                       <button
@@ -510,23 +548,24 @@ export default function WooCommerceCheckout({
                           type="text"
                           value={couponInput}
                           onChange={(e) => setCouponInput(e.target.value)}
-                          placeholder="কুপন কোড (যেমন: EID50 বা FREESHIP)"
+                          placeholder="আপনার কুপন কোড লিখুন"
                           className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 uppercase"
                         />
                         <button
                           type="button"
                           onClick={handleApplyCoupon}
-                          className="bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+                          disabled={isLoadingCoupons}
+                          className="bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg cursor-pointer disabled:cursor-wait disabled:opacity-50"
                         >
-                          এপ্লাই
+                          {isLoadingCoupons ? 'লোড হচ্ছে...' : 'এপ্লাই'}
                         </button>
                       </div>
                       {couponError && (
                         <p className="text-[11px] text-rose-600 mt-1">{couponError}</p>
                       )}
-                      <p className="text-[10px] text-stone-400 mt-1">
-                        টিপ: <strong>EID50</strong> লিখলে ৫০ টাকা ছাড় পাবেন!
-                      </p>
+                      {couponLoadError && (
+                        <p className="text-[11px] text-rose-600 mt-1">{couponLoadError}</p>
+                      )}
                     </div>
                   )}
                 </div>

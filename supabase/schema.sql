@@ -33,6 +33,15 @@ create table if not exists public.combos (
   image_url text
 );
 
+create table if not exists public.coupons (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique check (code ~ '^[A-Z0-9_-]+$'),
+  discount_type text not null check (discount_type in ('fixed', 'free_shipping')),
+  discount_amount numeric not null default 0 check (discount_amount >= 0),
+  min_quantity integer not null default 1 check (min_quantity > 0),
+  is_active boolean not null default true
+);
+
 create table if not exists public.orders (
   id text primary key,
   order_id text not null unique,
@@ -50,6 +59,7 @@ create table if not exists public.orders (
   delivery_charge numeric not null default 0,
   discount numeric not null default 0,
   total_amount numeric not null,
+  coupon_code text,
   status text not null default 'pending'
     check (status in ('pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled')),
   stock_deducted boolean not null default false,
@@ -61,6 +71,8 @@ create table if not exists public.orders (
 
 alter table public.orders
   add column if not exists stock_deducted boolean not null default false;
+alter table public.orders
+  add column if not exists coupon_code text;
 
 create or replace function public.place_order_with_stock(order_data jsonb)
 returns jsonb
@@ -71,11 +83,63 @@ as $$
 declare
   requested_bundle_id text := order_data->>'bundle_id';
   requested_quantity integer := (order_data->>'quantity')::integer;
+  requested_coupon_code text := nullif(upper(btrim(order_data->>'coupon_code')), '');
+  requested_item_subtotal numeric;
+  requested_delivery_charge numeric;
+  authoritative_unit_price numeric;
+  bundle_has_free_delivery boolean;
+  coupon_row public.coupons;
+  calculated_discount numeric := 0;
+  calculated_total numeric;
   order_row public.orders;
 begin
   if requested_bundle_id is null or requested_quantity is null or requested_quantity < 1 then
     raise exception 'INVALID_ORDER_QUANTITY';
   end if;
+
+  select sale_price, free_delivery
+  into authoritative_unit_price, bundle_has_free_delivery
+  from public.combos
+  where id = requested_bundle_id;
+  if found then
+    requested_item_subtotal := authoritative_unit_price * requested_quantity;
+  else
+    select regular_price, false
+    into authoritative_unit_price, bundle_has_free_delivery
+    from public.products
+    where id = requested_bundle_id;
+    if not found then
+      raise exception 'PRODUCT_NOT_FOUND';
+    end if;
+    requested_item_subtotal := authoritative_unit_price * requested_quantity;
+  end if;
+  if order_data->>'delivery_area' = 'dhaka' then
+    requested_delivery_charge := case when bundle_has_free_delivery then 0 else 70 end;
+  elsif order_data->>'delivery_area' = 'outside_dhaka' then
+    requested_delivery_charge := case when bundle_has_free_delivery then 0 else 130 end;
+  else
+    raise exception 'INVALID_DELIVERY_AREA';
+  end if;
+
+  if requested_coupon_code is not null then
+    select * into coupon_row
+    from public.coupons
+    where code = requested_coupon_code
+      and is_active;
+    if not found or requested_quantity < coupon_row.min_quantity then
+      raise exception 'INVALID_COUPON';
+    end if;
+
+    if coupon_row.discount_type = 'fixed' then
+      calculated_discount := least(coupon_row.discount_amount, requested_item_subtotal);
+    elsif coupon_row.discount_type = 'free_shipping' then
+      requested_delivery_charge := 0;
+    end if;
+  end if;
+  calculated_total := greatest(
+    0,
+    requested_item_subtotal + requested_delivery_charge - calculated_discount
+  );
 
   if exists (select 1 from public.combos where id = requested_bundle_id) then
     update public.combos
@@ -105,7 +169,7 @@ begin
   insert into public.orders (
     id, order_id, customer_name, customer_phone, customer_address, delivery_area,
     note, payment_method, bkash_tx_id, bundle_id, bundle_name, quantity,
-    item_subtotal, delivery_charge, discount, total_amount, status, created_at, stock_deducted
+    item_subtotal, delivery_charge, discount, total_amount, coupon_code, status, created_at, stock_deducted
   ) values (
     order_data->>'id',
     order_data->>'order_id',
@@ -119,10 +183,11 @@ begin
     requested_bundle_id,
     order_data->>'bundle_name',
     requested_quantity,
-    (order_data->>'item_subtotal')::numeric,
-    (order_data->>'delivery_charge')::numeric,
-    (order_data->>'discount')::numeric,
-    (order_data->>'total_amount')::numeric,
+    requested_item_subtotal,
+    requested_delivery_charge,
+    calculated_discount,
+    calculated_total,
+    requested_coupon_code,
     'pending',
     coalesce((order_data->>'created_at')::timestamptz, now()),
     true
@@ -204,6 +269,7 @@ alter table public.orders add constraint orders_status_check
 
 alter table public.products enable row level security;
 alter table public.combos enable row level security;
+alter table public.coupons enable row level security;
 alter table public.orders enable row level security;
 
 drop policy if exists "Catalog is public to read" on public.products;
@@ -224,12 +290,28 @@ create policy "Admins manage combos"
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
+drop policy if exists "Active coupons are public to read" on public.coupons;
+create policy "Active coupons are public to read"
+  on public.coupons for select to anon, authenticated using (is_active);
+drop policy if exists "Admins manage coupons" on public.coupons;
+create policy "Admins manage coupons"
+  on public.coupons for all to authenticated
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
 drop policy if exists "Customers can place pending orders" on public.orders;
 drop policy if exists "Admins manage orders" on public.orders;
 create policy "Admins manage orders"
   on public.orders for all to authenticated
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+insert into public.coupons (code, discount_type, discount_amount, min_quantity, is_active)
+values
+  ('EID50', 'fixed', 50, 1, true),
+  ('EID100', 'fixed', 100, 2, true),
+  ('FREESHIP', 'free_shipping', 0, 1, true)
+on conflict (code) do nothing;
 
 insert into public.products (
   id, name, sku, category, unit_weight, cost_price, regular_price,
