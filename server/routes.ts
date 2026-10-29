@@ -65,7 +65,15 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
     }
 
     const bundles = db.getBundles();
-    const bundle = bundles.find((b) => b.id === bundleId) || bundles[0];
+    const bundle = bundles.find((item) => item.id === bundleId);
+    if (!bundle) {
+      return res.status(409).json({
+        success: false,
+        error: bundles.length === 0
+          ? 'No packages are currently available to order.'
+          : 'The selected package is no longer available.',
+      });
+    }
     const qty = Math.max(1, Number(quantity) || 1);
     const itemSubtotal = bundle.salePrice * qty;
 

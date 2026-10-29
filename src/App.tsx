@@ -9,49 +9,78 @@ import WooCommerceCheckout from './components/WooCommerceCheckout';
 import CustomerReviews from './components/CustomerReviews';
 import FaqSection from './components/FaqSection';
 import OrderSuccessModal from './components/OrderSuccessModal';
-import LiveSalesNotification from './components/LiveSalesNotification';
 import StickyBottomMobileBar from './components/StickyBottomMobileBar';
 import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
-import { SHEMAI_BUNDLES, CUSTOMER_REVIEWS } from './data/shemaiData';
+import { CUSTOMER_REVIEWS } from './data/shemaiData';
 import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
-import { fetchAllProducts, seedInitialCombosIfEmpty } from './services/dbService';
+import { fetchAllProducts, fetchCombos } from './services/dbService';
 import { useCurrentRoute } from './router';
+
+function productToBundle(product: ProductItem): ShemaiBundle {
+  return {
+    id: product.id,
+    name: product.name,
+    subtitle: `একক পণ্য (${product.unitWeight})`,
+    weight: product.unitWeight,
+    boxes: 1,
+    originalPrice: product.regularPrice,
+    salePrice: product.regularPrice,
+    savings: 0,
+    freeDelivery: false,
+    description: product.description,
+    inStock: product.inStock,
+    stockCount: product.stockQuantity,
+    imageUrl: product.imageUrl,
+  };
+}
 
 export default function App() {
   const [currentRoute, navigateToRoute] = useCurrentRoute();
 
-  // Live products loaded from database (with fallback to default bundles)
-  const [bundles, setBundles] = useState<ShemaiBundle[]>(SHEMAI_BUNDLES);
-  const [selectedBundleId, setSelectedBundleId] = useState('bundle-double');
+  const [bundles, setBundles] = useState<ShemaiBundle[]>([]);
+  const [selectedBundleId, setSelectedBundleId] = useState('');
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [isLoadingCombos, setIsLoadingCombos] = useState(true);
+  const [comboRetryKey, setComboRetryKey] = useState(0);
 
   useEffect(() => {
-    // Seed and sync products with database
-    seedInitialCombosIfEmpty().then((prods) => {
-      if (prods && prods.length > 0) {
-        setBundles(prods);
-      }
+    let active = true;
+    setIsLoadingCombos(true);
+    setCatalogError(null);
+    fetchCombos().then((loadedCombos) => {
+      if (!active) return;
+      setBundles(loadedCombos);
+      setSelectedBundleId((selectedId) => (
+        loadedCombos.some((combo) => combo.id === selectedId)
+          ? selectedId
+          : loadedCombos[0]?.id ?? ''
+      ));
     }).catch((error: unknown) => {
       console.error('Could not load combos from Supabase:', error);
-      setCatalogError(error instanceof Error ? error.message : 'কম্বো লোড করা যায়নি');
+      if (active) setCatalogError(error instanceof Error ? error.message : 'কম্বো লোড করা যায়নি');
+    }).finally(() => {
+      if (active) setIsLoadingCombos(false);
     });
-  }, [currentRoute]);
+
+    return () => {
+      active = false;
+    };
+  }, [currentRoute, comboRetryKey]);
 
   useEffect(() => {
     const refreshBundleStock = () => {
-      void Promise.all([seedInitialCombosIfEmpty(), fetchAllProducts()]).then(([freshCombos, products]) => {
+      void Promise.all([fetchCombos(), fetchAllProducts()]).then(([freshCombos, products]) => {
         setBundles((currentBundles) => {
-          const currentProducts = currentBundles
-            .filter((bundle) => !freshCombos.some((combo) => combo.id === bundle.id))
-            .map((bundle) => {
+          const comboIds = new Set(freshCombos.map((combo) => combo.id));
+          const selectedProducts = currentBundles
+            .filter((bundle) => !comboIds.has(bundle.id))
+            .flatMap((bundle) => {
               const product = products.find((item) => item.id === bundle.id);
-              return product
-                ? { ...bundle, inStock: product.inStock, stockCount: product.stockQuantity }
-                : bundle;
+              return product ? [productToBundle(product)] : [];
             });
-          return [...freshCombos, ...currentProducts];
+          return [...freshCombos, ...selectedProducts];
         });
       }).catch((error: unknown) => {
         console.error('Could not refresh combo stock after order:', error);
@@ -68,22 +97,7 @@ export default function App() {
   };
 
   const handleSelectProduct = (product: ProductItem) => {
-    const convertedBundle: ShemaiBundle = {
-      id: product.id,
-      name: product.name,
-      subtitle: `একক পণ্য (${product.unitWeight})`,
-      weight: product.unitWeight,
-      boxes: 1,
-      originalPrice: Math.round(product.regularPrice * 1.25),
-      salePrice: product.regularPrice,
-      savings: Math.round(product.regularPrice * 0.25),
-      badge: 'একক প্রোডাক্ট',
-      badgeColor: 'bg-amber-600',
-      freeDelivery: false,
-      description: product.description,
-      inStock: product.inStock,
-      stockCount: product.stockQuantity,
-    };
+    const convertedBundle = productToBundle(product);
 
     setBundles((prev) => {
       if (prev.some((bundle) => bundle.id === product.id)) {
@@ -115,12 +129,6 @@ export default function App() {
         {/* 2. Hero Section Image Slider */}
         <HeroSlider />
 
-        {catalogError && (
-          <p role="alert" className="mx-auto mt-4 max-w-7xl rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
-            Supabase থেকে কম্বো লোড করা যায়নি: {catalogError}
-          </p>
-        )}
-
         {/* 3. Dedicated Carousel Slider for Individual Products (Not Combo Pack) */}
         <ProductCarousel onSelectProduct={handleSelectProduct} />
 
@@ -129,6 +137,9 @@ export default function App() {
           bundles={bundles}
           selectedBundleId={selectedBundleId}
           onSelectBundle={setSelectedBundleId}
+          isLoading={isLoadingCombos}
+          loadError={catalogError}
+          onRetry={() => setComboRetryKey((current) => current + 1)}
         />
 
         {/* 5. Why Choose Us: 4 Pillars & Comparison with ordinary market shemai */}
@@ -155,11 +166,8 @@ export default function App() {
       {/* 10. Footer with Courier Partners & Admin portal link */}
       <Footer onOpenAdmin={() => navigateToRoute('admin')} />
 
-      {/* 11. Live Sales Pop-up Notification (WordPress / CartFlows style social proof) */}
-      <LiveSalesNotification />
-
       {/* 12. Sticky Mobile Action Bar for Fast Ordering */}
-      <StickyBottomMobileBar />
+      <StickyBottomMobileBar canOrder={Boolean(selectedBundleId)} />
 
       {/* 13. Order Confirmed Invoice Modal with Confetti Celebration */}
       <OrderSuccessModal

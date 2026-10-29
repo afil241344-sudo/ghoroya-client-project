@@ -96,11 +96,3 @@ export interface DBCoupon {
   minQuantity: number;
   isActive: boolean;
 }
-
-export interface LiveSalesNotificationItem {
-  id: string;
-  name: string;
-  location: string;
-  bundleTitle: string;
-  timeAgo: string;
-}

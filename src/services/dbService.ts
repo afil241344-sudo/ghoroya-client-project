@@ -1,6 +1,5 @@
 import { getSupabaseClient } from '../lib/supabase';
 import { DBCoupon, PlacedOrder, ShemaiBundle, ProductItem } from '../types';
-import { SHEMAI_BUNDLES } from '../data/shemaiData';
 
 export interface BackendOrder {
   id: string;
@@ -59,68 +58,6 @@ const COUPONS_TABLE = 'coupons';
 const STORE_SETTINGS_TABLE = 'store_settings';
 const SLIDER_IMAGES_TABLE = 'slider_images';
 
-export const DEFAULT_BASE_PRODUCTS: ProductItem[] = [
-  {
-    id: 'prod-shemai-450',
-    name: 'শাহী গাওয়া ঘিয়ে ভাজা লাচ্ছা সেমাই (৪৫০ গ্রাম বক্স)',
-    sku: 'LCH-SHM-450',
-    category: 'লাচ্ছা সেমাই',
-    unitWeight: '৪৫০ গ্রাম',
-    costPrice: 280,
-    regularPrice: 420,
-    stockQuantity: 280,
-    inStock: true,
-    description: 'সিরাজগঞ্জের খাঁটি গাওয়া ঘিয়ে ভাজা প্রিমিয়াম মুচমুচে সোনালী সেমাই। কোনো ডালডা নেই।',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'prod-ghee-250',
-    name: 'সিরাজগঞ্জের খাঁটি গাওয়া ঘি জার (২৫০ গ্রাম)',
-    sku: 'GHEE-JAR-250',
-    category: 'গাওয়া ঘি',
-    unitWeight: '২৫০ গ্রাম',
-    costPrice: 320,
-    regularPrice: 480,
-    stockQuantity: 95,
-    inStock: true,
-    description: 'দেশি গাভীর খাঁটি দুধের সর থেকে ঐতিহ্যবাহী নিয়মে প্রস্তুতকৃত সুঘ্রাণযুক্ত গাওয়া ঘি।',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'prod-topping-nuts',
-    name: 'স্পেশাল পেস্তা, কাঠবাদাম ও জাফরান টপিং (১০০ গ্রাম)',
-    sku: 'TOP-NUT-100',
-    category: 'টপিং ও বাদাম',
-    unitWeight: '১০০ গ্রাম',
-    costPrice: 150,
-    regularPrice: 240,
-    stockQuantity: 140,
-    inStock: true,
-    description: 'আসল ইরানি জাফরান, পেস্তা ও কাঠবাদাম স্লাইসের রাজকীয় ব্লেন্ড যা সেমাইয়ের স্বাদ দ্বিগুণ করে।',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'prod-kismis-gold',
-    name: 'প্রিমিয়াম গোল্ডেন কিশমিশ প্যাক (১৫০ গ্রাম)',
-    sku: 'KSM-GLD-150',
-    category: 'ড্রাই ফ্রুটস',
-    unitWeight: '১৫০ গ্রাম',
-    costPrice: 110,
-    regularPrice: 180,
-    stockQuantity: 110,
-    inStock: true,
-    description: 'স্বাদ ও আকারে বড় মিষ্টি বাছাইকৃত গোল্ডেন কিশমিশ।',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-const DEFAULT_COMBOS: BackendCombo[] = SHEMAI_BUNDLES.map((bundle, index) => ({
-  ...bundle,
-  stockCount: [120, 85, 40][index] ?? 40,
-  inStock: true,
-  includedProductIds: `prod-shemai-450 (${[1, 2, 4][index] ?? 1}x)`,
-}));
-
 export class InsufficientStockError extends Error {
   constructor(message = 'এই পণ্যের পর্যাপ্ত স্টক নেই।') {
     super(message);
@@ -149,19 +86,24 @@ function throwOnError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
 
-export async function seedInitialCombosIfEmpty(): Promise<BackendCombo[]> {
+export async function fetchCombos(): Promise<BackendCombo[]> {
   const { data, error } = await getSupabaseClient()
     .from(COMBOS_TABLE)
     .select('*')
     .order('id');
   throwOnError(error);
-  if (!data) throw new Error('Supabase returned no combo records.');
-  if (data.length > 0) return data.map((row) => fromDatabaseRow<BackendCombo>(row));
-  return DEFAULT_COMBOS;
+  return (data ?? []).map((row) => fromDatabaseRow<BackendCombo>(row));
 }
 
-export async function fetchCombos(): Promise<BackendCombo[]> {
-  return seedInitialCombosIfEmpty();
+export async function createCombo(combo: BackendCombo): Promise<BackendCombo> {
+  const { data, error } = await getSupabaseClient()
+    .from(COMBOS_TABLE)
+    .insert(toDatabaseRow(combo))
+    .select()
+    .single();
+  throwOnError(error);
+  if (!data) throw new Error('Supabase did not return the created combo.');
+  return fromDatabaseRow<BackendCombo>(data);
 }
 
 export async function updateCombo(
@@ -175,22 +117,24 @@ export async function updateCombo(
   throwOnError(error);
 }
 
-export const seedInitialProductsIfEmpty = seedInitialCombosIfEmpty;
-export const updateProduct = updateCombo;
+export async function deleteCombo(comboId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(COMBOS_TABLE)
+    .delete()
+    .eq('id', comboId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Combo was not deleted. Check admin permissions.');
+}
 
-export async function seedInitialProductsCatalogIfEmpty(): Promise<ProductItem[]> {
+export async function fetchAllProducts(): Promise<ProductItem[]> {
   const { data, error } = await getSupabaseClient()
     .from(PRODUCTS_TABLE)
     .select('*')
     .order('id');
   throwOnError(error);
-  if (!data) throw new Error('Supabase returned no product records.');
-  if (data.length > 0) return data.map((row) => fromDatabaseRow<ProductItem>(row));
-  return DEFAULT_BASE_PRODUCTS;
-}
-
-export async function fetchAllProducts(): Promise<ProductItem[]> {
-  return seedInitialProductsCatalogIfEmpty();
+  return (data ?? []).map((row) => fromDatabaseRow<ProductItem>(row));
 }
 
 export async function createProductItem(

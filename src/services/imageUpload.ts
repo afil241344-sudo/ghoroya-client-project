@@ -69,41 +69,6 @@ export async function readImageDimensions(file: File): Promise<{ width: number; 
   }
 }
 
-export async function cropSliderImageToStandard(file: File): Promise<File> {
-  let bitmap: ImageBitmap;
-  try {
-    bitmap = await createImageBitmap(file);
-  } catch {
-    throw new Error('পুরোনো slider image crop করা যায়নি।');
-  }
-
-  const targetWidth = 1280;
-  const targetHeight = 720;
-  const targetRatio = targetWidth / targetHeight;
-  const sourceRatio = bitmap.width / bitmap.height;
-  const sourceWidth = sourceRatio > targetRatio ? bitmap.height * targetRatio : bitmap.width;
-  const sourceHeight = sourceRatio > targetRatio ? bitmap.height : bitmap.width / targetRatio;
-  const sourceX = (bitmap.width - sourceWidth) / 2;
-  const sourceY = (bitmap.height - sourceHeight) / 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-  const context = canvas.getContext('2d');
-  if (!context) {
-    bitmap.close();
-    throw new Error('Slider image crop করার জন্য browser canvas পাওয়া যায়নি।');
-  }
-  context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, targetWidth, targetHeight);
-  bitmap.close();
-
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-  if (!blob) throw new Error('Slider image crop করা যায়নি।');
-  return new File([blob], `${file.name.replace(/\.[^.]+$/, '')}-16x9.jpg`, {
-    type: 'image/jpeg',
-    lastModified: Date.now(),
-  });
-}
-
 export async function deleteCatalogImage(imageUrl: string): Promise<void> {
   const marker = '/storage/v1/object/public/catalog/';
   const markerIndex = imageUrl.indexOf(marker);

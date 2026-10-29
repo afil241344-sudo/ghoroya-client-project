@@ -48,10 +48,11 @@ import {
   subscribeToOrders,
   updateOrderStatus,
   deleteOrder,
-  seedInitialCombosIfEmpty,
+  fetchCombos,
+  createCombo,
   updateCombo,
+  deleteCombo,
   fetchAllProducts,
-  seedInitialProductsCatalogIfEmpty,
   createProductItem,
   updateProductItem,
   deleteProductItem,
@@ -72,10 +73,8 @@ import {
   ProductItem,
 } from '../services/dbService';
 import { DBCoupon } from '../types';
-import { cropSliderImageToStandard, deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
+import { deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
-import { getBundleImage } from '../utils/bundleImages';
-import { DEFAULT_SLIDER_IMAGES } from '../data/sliderImages';
 
 function isOrderStatus(status: string): status is BackendOrder['status'] {
   return ['pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status);
@@ -119,11 +118,14 @@ function escapeHtml(value: string): string {
   })[character] ?? character);
 }
 
-function buildInvoicesHtml(orders: BackendOrder[], combos: BackendCombo[]): string {
+function buildInvoicesHtml(
+  orders: BackendOrder[],
+  combos: BackendCombo[],
+  products: ProductItem[],
+): string {
   const invoices = orders.map((order) => {
-    const bundleImage = getBundleImage(
-      combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
-    );
+    const bundleImage = combos.find((combo) => combo.id === order.bundleId)?.imageUrl
+      || products.find((product) => product.id === order.bundleId)?.imageUrl;
     const invoiceDate = new Date(order.createdAt).toLocaleString('en-GB');
     const paymentMethod = order.paymentMethod === 'cod' ? 'Cash on delivery' : 'bKash/Nagad';
 
@@ -152,7 +154,7 @@ function buildInvoicesHtml(orders: BackendOrder[], combos: BackendCombo[]): stri
           <thead><tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
           <tbody><tr>
             <td class="product">
-              <img src="${escapeHtml(bundleImage)}" alt="">
+              ${bundleImage ? `<img src="${escapeHtml(bundleImage)}" alt="">` : ''}
               <span>${escapeHtml(order.bundleName)}</span>
             </td>
             <td>${order.quantity}</td>
@@ -227,7 +229,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [isSavingCoupon, setIsSavingCoupon] = useState(false);
   const [isSavingDeliverySettings, setIsSavingDeliverySettings] = useState(false);
   const [isSavingSlider, setIsSavingSlider] = useState(false);
-  const [isImportingDefaultSlides, setIsImportingDefaultSlides] = useState(false);
   const [isSliderFormOpen, setIsSliderFormOpen] = useState(false);
   const [editingSliderImage, setEditingSliderImage] = useState<SliderImage | null>(null);
   const [sliderImageFile, setSliderImageFile] = useState<File | null>(null);
@@ -258,6 +259,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
   // Modals & Edit states
   const [editingCombo, setEditingCombo] = useState<BackendCombo | null>(null);
+  const [isCreatingCombo, setIsCreatingCombo] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [comboImageFile, setComboImageFile] = useState<File | null>(null);
@@ -267,16 +269,17 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [newProductForm, setNewProductForm] = useState<Omit<ProductItem, 'id'>>({
     name: '',
     sku: '',
-    category: 'লাচ্ছা সেমাই',
+    category: '',
     unitWeight: '',
     costPrice: 0,
     regularPrice: 0,
-    stockQuantity: 100,
+    stockQuantity: 0,
     inStock: true,
     description: '',
   });
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [isPrintingOrders, setIsPrintingOrders] = useState(false);
@@ -294,21 +297,24 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings] = await Promise.all([
+      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings, fetchedSliderImages] = await Promise.all([
         fetchAllOrders(),
-        seedInitialCombosIfEmpty(),
-        seedInitialProductsCatalogIfEmpty(),
+        fetchCombos(),
+        fetchAllProducts(),
         fetchAllCoupons(),
         fetchDeliverySettings(),
+        fetchSliderImages(),
       ]);
       setOrders(fetchedOrders);
       setCombos(fetchedCombos);
       setProductsList(fetchedProducts);
       setCoupons(fetchedCoupons);
       setDeliverySettings(fetchedDeliverySettings);
-      setSliderImages(await fetchSliderImages());
+      setSliderImages(fetchedSliderImages);
+      setCatalogLoadError(null);
     } catch (err) {
       console.error('Error fetching admin data:', err);
+      setCatalogLoadError(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
       showToast(err instanceof Error ? err.message : 'অ্যাডমিন ডেটা লোড করা যায়নি');
     } finally {
       setIsLoading(false);
@@ -344,21 +350,24 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Initial load for combos and products
+    // Load catalog records from Supabase without inserting defaults.
     Promise.all([
-      seedInitialCombosIfEmpty(),
-      seedInitialProductsCatalogIfEmpty(),
+      fetchCombos(),
+      fetchAllProducts(),
       fetchAllCoupons(),
       fetchDeliverySettings(),
-    ]).then(async ([cList, pList, couponList, fetchedDeliverySettings]) => {
+      fetchSliderImages(),
+    ]).then(([cList, pList, couponList, fetchedDeliverySettings, fetchedSliderImages]) => {
       setCombos(cList);
       setProductsList(pList);
       setCoupons(couponList);
       setDeliverySettings(fetchedDeliverySettings);
-      setSliderImages(await fetchSliderImages());
+      setSliderImages(fetchedSliderImages);
+      setCatalogLoadError(null);
       setIsLoading(false);
     }).catch((error: unknown) => {
       console.error('Could not load catalog data from Supabase:', error);
+      setCatalogLoadError(error instanceof Error ? error.message : 'ক্যাটালগ ডেটা লোড করা যায়নি');
       showToast(error instanceof Error ? error.message : 'ক্যাটালগ ডেটা লোড করা যায়নি');
       setIsLoading(false);
     });
@@ -455,37 +464,109 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
   };
 
+  const openNewComboForm = () => {
+    setComboImageFile(null);
+    setIsCreatingCombo(true);
+    setEditingCombo({
+      id: crypto.randomUUID(),
+      name: '',
+      subtitle: '',
+      weight: '',
+      boxes: 1,
+      originalPrice: 0,
+      salePrice: 0,
+      savings: 0,
+      freeDelivery: false,
+      popular: false,
+      description: '',
+      inStock: true,
+      stockCount: 0,
+    });
+  };
+
   // 1. Combo Table Handlers
   const handleSaveCombo = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCombo) return;
+    if (!editingCombo.name.trim() || !editingCombo.weight.trim()) {
+      showToast('কম্বোর নাম এবং ওজন/সাইজ লিখুন।');
+      return;
+    }
+    if (editingCombo.salePrice < 0 || editingCombo.originalPrice < 0 || editingCombo.stockCount < 0) {
+      showToast('মূল্য এবং স্টক শূন্য বা তার বেশি হতে হবে।');
+      return;
+    }
 
     setIsSavingCatalogItem(true);
+    let uploadedImageUrl: string | null = null;
+    const previousImageUrl = editingCombo.imageUrl;
     try {
-      const imageUrl = comboImageFile
-        ? await uploadCatalogImage(comboImageFile, 'combos', editingCombo.id)
-        : editingCombo.imageUrl;
-      const updatedCombo = { ...editingCombo, imageUrl };
-      await updateCombo(editingCombo.id, {
-        salePrice: Number(editingCombo.salePrice),
+      if (comboImageFile) {
+        uploadedImageUrl = await uploadCatalogImage(comboImageFile, 'combos', editingCombo.id);
+      }
+      const combo: BackendCombo = {
+        ...editingCombo,
+        name: editingCombo.name.trim(),
+        subtitle: editingCombo.subtitle.trim(),
+        weight: editingCombo.weight.trim(),
+        description: editingCombo.description.trim(),
         originalPrice: Number(editingCombo.originalPrice),
+        salePrice: Number(editingCombo.salePrice),
+        savings: Math.max(0, Number(editingCombo.originalPrice) - Number(editingCombo.salePrice)),
         stockCount: Number(editingCombo.stockCount),
-        inStock: editingCombo.inStock,
-        includedProductIds: editingCombo.includedProductIds,
-        imageUrl,
-      });
+        imageUrl: uploadedImageUrl ?? editingCombo.imageUrl,
+      };
 
-      setCombos((prev) =>
-        prev.map((combo) => (combo.id === editingCombo.id ? updatedCombo : combo))
-      );
+      if (isCreatingCombo) {
+        const created = await createCombo(combo);
+        setCombos((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+        showToast(`কম্বো '${created.name}' তৈরি হয়েছে।`);
+      } else {
+        await updateCombo(editingCombo.id, combo);
+        setCombos((prev) => prev.map((item) => item.id === editingCombo.id ? combo : item));
+        showToast(`কম্বো অফার '${combo.name}' আপডেট হয়েছে।`);
+      }
       setEditingCombo(null);
+      setIsCreatingCombo(false);
       setComboImageFile(null);
-      showToast(`কম্বো অফার '${editingCombo.name}' ডাটাবেসে আপডেট হয়েছে!`);
+      if (uploadedImageUrl && previousImageUrl && previousImageUrl !== uploadedImageUrl) {
+        try {
+          await deleteCatalogImage(previousImageUrl);
+        } catch (cleanupError) {
+          console.error('Combo saved but its previous image could not be removed:', cleanupError);
+          showToast('কম্বো সেভ হয়েছে, তবে পুরোনো image Storage থেকে মুছতে পারেনি।');
+        }
+      }
     } catch (err) {
+      if (uploadedImageUrl) {
+        try {
+          await deleteCatalogImage(uploadedImageUrl);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused combo image:', cleanupError);
+        }
+      }
       console.error('Error saving combo image or details:', err);
-      showToast(err instanceof Error ? err.message : 'কম্বো আপডেট করতে সমস্যা হয়েছে');
+      showToast(err instanceof Error ? err.message : 'কম্বো সেভ করতে সমস্যা হয়েছে');
     } finally {
       setIsSavingCatalogItem(false);
+    }
+  };
+
+  const handleDeleteCombo = async (combo: BackendCombo) => {
+    if (!window.confirm(`"${combo.name}" কম্বোটি মুছে ফেলবেন? পুরোনো অর্ডারের তথ্য অক্ষত থাকবে।`)) return;
+    try {
+      await deleteCombo(combo.id);
+      setCombos((current) => current.filter((item) => item.id !== combo.id));
+      try {
+        if (combo.imageUrl) await deleteCatalogImage(combo.imageUrl);
+        showToast('কম্বো মুছে ফেলা হয়েছে।');
+      } catch (cleanupError) {
+        console.error('Combo deleted but its Storage image could not be removed:', cleanupError);
+        showToast('কম্বো মুছে গেছে, তবে Storage থেকে image মুছতে পারেনি।');
+      }
+    } catch (error) {
+      console.error('Could not delete combo:', error);
+      showToast(error instanceof Error ? error.message : 'কম্বো মুছে ফেলা যায়নি।');
     }
   };
 
@@ -509,11 +590,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setNewProductForm({
         name: '',
         sku: '',
-        category: 'লাচ্ছা সেমাই',
+        category: '',
         unitWeight: '',
         costPrice: 0,
         regularPrice: 0,
-        stockQuantity: 100,
+        stockQuantity: 0,
         inStock: true,
         description: '',
       });
@@ -771,51 +852,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
   };
 
-  const handleImportDefaultSlides = async () => {
-    if (sliderImages.length > 0) return;
-    setIsImportingDefaultSlides(true);
-    try {
-      for (const [index, slide] of DEFAULT_SLIDER_IMAGES.entries()) {
-        const response = await fetch(slide.src);
-        if (!response.ok) throw new Error(`বর্তমান slide ${index + 1} image পড়া যায়নি।`);
-        const blob = await response.blob();
-        const contentType = blob.type || 'image/jpeg';
-        const extension = contentType.split('/')[1] === 'jpeg' ? 'jpg' : contentType.split('/')[1];
-        const sourceFile = new File([blob], `legacy-slider-${index + 1}.${extension}`, { type: contentType });
-        const file = await cropSliderImageToStandard(sourceFile);
-        const id = crypto.randomUUID();
-        const imageUrl = await uploadCatalogImage(file, 'slider', id);
-        try {
-          const created = await createSliderImage({
-            id,
-            title: slide.title,
-            altText: slide.altText,
-            caption: slide.caption,
-            imageUrl,
-            sortOrder: index,
-            isActive: true,
-          });
-          setSliderImages((current) => [...current, created].sort(
-            (left, right) => left.sortOrder - right.sortOrder,
-          ));
-        } catch (error) {
-          try {
-            await deleteCatalogImage(imageUrl);
-          } catch (cleanupError) {
-            console.error('Could not clean up an unregistered default slider image:', cleanupError);
-          }
-          throw error;
-        }
-      }
-      showToast('বর্তমান ৫টি slider image ডাটাবেসে import হয়েছে।');
-    } catch (error) {
-      console.error('Could not import default slider images:', error);
-      showToast(error instanceof Error ? error.message : 'Slider image import করা যায়নি।');
-    } finally {
-      setIsImportingDefaultSlides(false);
-    }
-  };
-
   const handleSaveDeliverySettings = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!deliverySettings) return;
@@ -1055,7 +1091,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     printWindow.addEventListener('afterprint', finishPrint, { once: true });
 
     try {
-      printWindow.document.write(buildInvoicesHtml(ordersToPrint, combos));
+      printWindow.document.write(buildInvoicesHtml(ordersToPrint, combos, productsList));
       printWindow.document.close();
 
       const imagesReady = Promise.allSettled(
@@ -1221,6 +1257,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
       {/* Main Content Area */}
       <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 space-y-4 p-3 sm:space-y-6 sm:p-6">
+        {catalogLoadError && (
+          <div role="alert" className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>Backend data লোড করা যায়নি। {catalogLoadError}</span>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              disabled={isRefreshing}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-bold hover:bg-rose-100 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              আবার চেষ্টা করুন
+            </button>
+          </div>
+        )}
+
         {/* Metric Cards Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
@@ -1529,9 +1580,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   কোনো অর্ডার পাওয়া যায়নি।
                 </div>
               ) : paginatedOrders.map((order) => {
-                const bundleImage = getBundleImage(
-                  combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
-                );
+                const bundleImage = combos.find((combo) => combo.id === order.bundleId)?.imageUrl
+                  || productsList.find((product) => product.id === order.bundleId)?.imageUrl;
                 const whatsappUrl = `https://wa.me/88${order.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                   `সালামু আলাইকুম ${order.customerName}! প্যারামাউন্ট ফুডস থেকে আপনার লাচ্ছা সেমাই এর অর্ডার #${order.orderId} সম্পর্কে যোগাযোগ করছি।`
                 )}`;
@@ -1559,11 +1609,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
                     <div className="mt-3 space-y-1 border-t border-stone-200 pt-3 text-xs">
                       <div className="flex items-center gap-2">
-                        <img
-                          src={bundleImage}
-                          alt={order.bundleName}
-                          className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover"
-                        />
+                        {bundleImage ? (
+                          <img src={bundleImage} alt={order.bundleName} className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover" />
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-400">
+                            <Package className="h-5 w-5" />
+                          </div>
+                        )}
                         <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
                       </div>
                       <p className="break-words text-stone-600">{order.customerAddress}</p>
@@ -1675,9 +1727,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     </tr>
                   ) : (
                     paginatedOrders.map((order) => {
-                      const bundleImage = getBundleImage(
-                        combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
-                      );
+                      const bundleImage = combos.find((combo) => combo.id === order.bundleId)?.imageUrl
+                        || productsList.find((product) => product.id === order.bundleId)?.imageUrl;
                       const whatsappUrl = `https://wa.me/88${order.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                         `সালামু আলাইকুম ${order.customerName}! প্যারামাউন্ট ফুডস থেকে আপনার লাচ্ছা সেমাই এর অর্ডার #${order.orderId} সম্পর্কে যোগাযোগ করছি।`
                       )}`;
@@ -1727,11 +1778,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                           {/* Bundle & Qty */}
                           <td className="py-3 px-3 align-top">
                             <div className="flex items-center gap-2">
-                              <img
-                                src={bundleImage}
-                                alt={order.bundleName}
-                                className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover"
-                              />
+                              {bundleImage ? (
+                                <img src={bundleImage} alt={order.bundleName} className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover" />
+                              ) : (
+                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-stone-200 bg-white text-stone-400">
+                                  <Package className="h-5 w-5" />
+                                </div>
+                              )}
                               <div>
                                 <span className="font-bold text-stone-900">{order.bundleName}</span>
                                 <span className="block text-[11px] text-stone-500">
@@ -2082,13 +2135,31 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   কম্বো অফার ও বান্ডেল প্যাকেজ তালিকা (Combo Offers Table)
                 </h3>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  ল্যান্ডিং পেজে প্রদর্শিত ১ বক্স ট্রায়াল, ২ বক্স ফ্যামিলি এবং ৪ বক্স মেগা অফারের দাম ও স্টক এখানে থেকে কন্ট্রোল করুন।
+                  এখানকার কম্বোগুলো storefront-এ দেখাবে। কোনো কম্বো না থাকলে নতুন কম্বো তৈরি করুন।
                 </p>
               </div>
+              <button
+                type="button"
+                onClick={openNewComboForm}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
+              >
+                <Plus className="h-4 w-4" />
+                নতুন কম্বো
+              </button>
             </div>
 
             {/* Combos Grid Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {combos.length === 0 && (
+                <div className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 px-5 py-10 text-center md:col-span-3">
+                  <Layers className="mx-auto h-9 w-9 text-stone-400" />
+                  <h4 className="mt-3 text-sm font-bold text-stone-800">কোনো কম্বো তৈরি করা হয়নি</h4>
+                  <p className="mt-1 text-xs text-stone-600">নতুন কম্বো যোগ করলে তা storefront-এ প্রকাশিত হবে।</p>
+                  <button type="button" onClick={openNewComboForm} className="mt-4 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800">
+                    কম্বো তৈরি করুন
+                  </button>
+                </div>
+              )}
               {combos.map((combo) => (
                 <div
                   key={combo.id}
@@ -2149,16 +2220,27 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </div>
 
                   <div className="mt-5 pt-3 border-t border-stone-200">
-                    <button
-                      onClick={() => {
-                        setComboImageFile(null);
-                        setEditingCombo({ ...combo });
-                      }}
-                      className="w-full bg-[#0073aa] hover:bg-[#005a87] text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                      <span>কম্বো মূল্য ও স্টক এডিট করুন</span>
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setComboImageFile(null);
+                          setIsCreatingCombo(false);
+                          setEditingCombo({ ...combo });
+                        }}
+                        className="flex-1 bg-[#0073aa] hover:bg-[#005a87] text-white font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>এডিট</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteCombo(combo)}
+                        aria-label={`${combo.name} মুছুন`}
+                        className="rounded-xl border border-rose-200 px-3 text-rose-600 hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2170,14 +2252,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 <div className="my-auto max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-stone-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:p-6">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-extrabold text-stone-900 text-base">
-                      কম্বো এডিট: {editingCombo.name}
+                      {isCreatingCombo ? 'নতুন কম্বো তৈরি করুন' : `কম্বো এডিট: ${editingCombo.name}`}
                     </h4>
                     <span className="text-[10px] font-mono bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
                       ID: {editingCombo.id}
                     </span>
                   </div>
                   <p className="text-xs text-stone-500 mb-4">
-                    কম্বো অফারের মূল্য, স্টক ও স্ট্যাটাস আপডেট করুন
+                    কম্বোর বর্ণনা, মূল্য, স্টক, ছবি এবং storefront status পরিচালনা করুন।
                   </p>
 
                   <form onSubmit={handleSaveCombo} className="space-y-4">
@@ -2185,12 +2267,92 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       currentImageUrl={editingCombo.imageUrl}
                       onFileChange={setComboImageFile}
                     />
+                    <label className="block text-xs font-bold text-stone-700">
+                      কম্বোর নাম
+                      <input
+                        type="text"
+                        maxLength={140}
+                        value={editingCombo.name}
+                        onChange={(event) => setEditingCombo({ ...editingCombo, name: event.target.value })}
+                        className="mt-1 w-full rounded-xl border px-3 py-2"
+                        required
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-stone-700">
+                      সংক্ষিপ্ত বর্ণনা
+                      <input
+                        type="text"
+                        maxLength={180}
+                        value={editingCombo.subtitle}
+                        onChange={(event) => setEditingCombo({ ...editingCombo, subtitle: event.target.value })}
+                        className="mt-1 w-full rounded-xl border px-3 py-2"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-bold text-stone-700">
+                        ওজন / সাইজ
+                        <input
+                          type="text"
+                          maxLength={80}
+                          value={editingCombo.weight}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, weight: event.target.value })}
+                          className="mt-1 w-full rounded-xl border px-3 py-2"
+                          required
+                        />
+                      </label>
+                      <label className="block text-xs font-bold text-stone-700">
+                        বক্স সংখ্যা
+                        <input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={editingCombo.boxes}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, boxes: Number(event.target.value) })}
+                          className="mt-1 w-full rounded-xl border px-3 py-2"
+                          required
+                        />
+                      </label>
+                    </div>
+                    <label className="block text-xs font-bold text-stone-700">
+                      বিস্তারিত বর্ণনা
+                      <textarea
+                        rows={3}
+                        maxLength={500}
+                        value={editingCombo.description}
+                        onChange={(event) => setEditingCombo({ ...editingCombo, description: event.target.value })}
+                        className="mt-1 w-full rounded-xl border px-3 py-2"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block text-xs font-bold text-stone-700">
+                        Badge (optional)
+                        <input
+                          type="text"
+                          maxLength={50}
+                          value={editingCombo.badge ?? ''}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, badge: event.target.value || undefined })}
+                          className="mt-1 w-full rounded-xl border px-3 py-2"
+                        />
+                      </label>
+                      <label className="block text-xs font-bold text-stone-700">
+                        Badge color class
+                        <input
+                          type="text"
+                          value={editingCombo.badgeColor ?? ''}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, badgeColor: event.target.value || undefined })}
+                          placeholder="bg-amber-600"
+                          className="mt-1 w-full rounded-xl border px-3 py-2"
+                        />
+                      </label>
+                    </div>
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         বিক্রয় মূল্য (টাকা):
                       </label>
                       <input
                         type="number"
+                        min="0"
+                        step="1"
                         value={editingCombo.salePrice}
                         onChange={(e) =>
                           setEditingCombo({
@@ -2210,6 +2372,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </label>
                       <input
                         type="number"
+                        min="0"
+                        step="1"
                         value={editingCombo.originalPrice}
                         onChange={(e) =>
                           setEditingCombo({
@@ -2229,6 +2393,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </label>
                       <input
                         type="number"
+                        min="0"
+                        step="1"
                         value={editingCombo.stockCount}
                         onChange={(e) =>
                           setEditingCombo({
@@ -2254,7 +2420,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                             includedProductIds: e.target.value,
                           })
                         }
-                        placeholder="যেমন: prod-shemai-450 (2x)"
+                        placeholder="প্যাকের মধ্যে থাকা পণ্যের বিবরণ"
                         className="w-full px-3 py-2 border rounded-xl text-xs font-mono"
                       />
                     </div>
@@ -2276,12 +2442,33 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         কম্বো অফারটি স্টকে ও বিক্রয়ে সক্রিয় রাখুন (In Stock)
                       </label>
                     </div>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2">
+                      <label className="flex items-center gap-2 text-xs font-bold text-stone-800">
+                        <input
+                          type="checkbox"
+                          checked={editingCombo.freeDelivery}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, freeDelivery: event.target.checked })}
+                          className="h-4 w-4 accent-emerald-600"
+                        />
+                        ফ্রি ডেলিভারি
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-bold text-stone-800">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(editingCombo.popular)}
+                          onChange={(event) => setEditingCombo({ ...editingCombo, popular: event.target.checked })}
+                          className="h-4 w-4 accent-emerald-600"
+                        />
+                        জনপ্রিয় অফার হিসেবে দেখান
+                      </label>
+                    </div>
 
                     <div className="flex gap-2 pt-3">
                       <button
                         type="button"
                         onClick={() => {
                           setEditingCombo(null);
+                          setIsCreatingCombo(false);
                           setComboImageFile(null);
                         }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
@@ -2294,7 +2481,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white py-2.5 rounded-xl font-bold text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                       >
                         <Save className="w-3.5 h-3.5" />
-                        <span>{isSavingCatalogItem ? 'সেভ হচ্ছে...' : 'কম্বো আপডেট সেভ করুন'}</span>
+                        <span>{isSavingCatalogItem ? 'সেভ হচ্ছে...' : isCreatingCombo ? 'কম্বো তৈরি করুন' : 'কম্বো আপডেট সেভ করুন'}</span>
                       </button>
                     </div>
                   </form>
@@ -3058,19 +3245,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             {sliderImages.length === 0 && (
               <section className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-5 text-center">
-                <p className="text-sm font-bold text-stone-800">এখনো কোনো database slider নেই।</p>
+                <p className="text-sm font-bold text-stone-800">এখনো কোনো slider image যোগ করা হয়নি।</p>
                 <p className="mt-1 text-xs text-stone-600">
-                  আগের homepage-এর পাঁচটি image database-এ নিয়ে এসে সেগুলো এখান থেকে পরিচালনা করতে পারবেন।
+                  Slider যোগ করলে সেটি সক্রিয় থাকা অবস্থায় homepage-এ প্রদর্শিত হবে।
                 </p>
-                <button
-                  type="button"
-                  onClick={() => void handleImportDefaultSlides()}
-                  disabled={isImportingDefaultSlides}
-                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                  {isImportingDefaultSlides ? 'Import হচ্ছে...' : 'বর্তমান slider image import করুন'}
-                </button>
               </section>
             )}
 

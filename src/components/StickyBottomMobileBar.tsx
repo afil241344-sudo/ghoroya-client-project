@@ -1,7 +1,11 @@
 import { ShoppingBag, Phone, MessageCircle } from 'lucide-react';
 import { scrollToCheckout } from '../utils/scrollToCheckout';
 
-export default function StickyBottomMobileBar() {
+interface StickyBottomMobileBarProps {
+  canOrder: boolean;
+}
+
+export default function StickyBottomMobileBar({ canOrder }: StickyBottomMobileBarProps) {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-300 p-2 sm:hidden shadow-[0_-4px_15px_rgba(0,0,0,0.08)]">
       <div className="flex items-center gap-2 max-w-md mx-auto">
@@ -30,10 +34,11 @@ export default function StickyBottomMobileBar() {
         {/* Big Order CTA */}
         <button
           onClick={scrollToCheckout}
-          className="flex-1 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-extrabold py-3 px-3 rounded-xl text-sm flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer"
+          disabled={!canOrder}
+          className="flex-1 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-extrabold py-3 px-3 rounded-xl text-sm flex items-center justify-center gap-1.5 shadow-md active:scale-98 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
         >
           <ShoppingBag className="w-4 h-4" />
-          <span>অর্ডার করুন (৳৪২০ থেকে)</span>
+          <span>{canOrder ? 'অর্ডার করুন' : 'পণ্য নির্বাচন করুন'}</span>
         </button>
       </div>
     </div>

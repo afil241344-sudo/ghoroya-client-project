@@ -1,7 +1,6 @@
 import { useState, useId, useEffect } from 'react';
-import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import { DBCoupon, ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
-import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
 import {
   fetchActiveCoupons,
   fetchDeliverySettings,
@@ -26,8 +25,8 @@ export default function WooCommerceCheckout({
   const formId = useId();
   const currentBundle =
     bundles.find((b) => b.id === selectedBundleId) || bundles[0];
-  const availableStock = currentBundle.stockCount;
-  const isOutOfStock = currentBundle.inStock === false || availableStock === 0;
+  const availableStock = currentBundle?.stockCount;
+  const isOutOfStock = !currentBundle || currentBundle.inStock === false || availableStock === 0;
 
   const [quantity, setQuantity] = useState(1);
   const [fullName, setFullName] = useState('');
@@ -51,7 +50,7 @@ export default function WooCommerceCheckout({
   useEffect(() => {
     setQuantity(1);
     setSubmissionError(null);
-  }, [currentBundle.id]);
+  }, [currentBundle?.id]);
 
   useEffect(() => {
     if (availableStock !== undefined && availableStock > 0) {
@@ -108,13 +107,13 @@ export default function WooCommerceCheckout({
   }, [activeCoupons, appliedCoupon, quantity]);
 
   // Price calculations
-  const itemSubtotal = currentBundle.salePrice * quantity;
+  const itemSubtotal = (currentBundle?.salePrice ?? 0) * quantity;
   const selectedCoupon = activeCoupons.find(
     (coupon) => coupon.code === appliedCoupon && coupon.isActive && quantity >= coupon.minQuantity,
   );
   const isFreeShippingCoupon = selectedCoupon?.discountType === 'free_shipping';
   const deliveryCharge =
-    currentBundle.freeDelivery || isFreeShippingCoupon
+    currentBundle?.freeDelivery || isFreeShippingCoupon
       ? 0
       : deliveryArea === 'dhaka'
         ? deliverySettings?.dhakaDeliveryFee ?? 0
@@ -187,6 +186,10 @@ export default function WooCommerceCheckout({
 
   const handleSubmitOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentBundle) {
+      setSubmissionError('অর্ডার করতে আগে প্রোডাক্ট তালিকা থেকে একটি পণ্য নির্বাচন করুন।');
+      return;
+    }
     if (!deliverySettings) {
       setSubmissionError(
         deliverySettingsError || 'ডেলিভারি চার্জ লোড হচ্ছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।',
@@ -262,6 +265,29 @@ export default function WooCommerceCheckout({
       setIsSubmitting(false);
     }
   };
+
+  if (!currentBundle) {
+    return (
+      <section id="checkout-section" className="scroll-mt-24 border-b border-amber-900/10 bg-[#f7f4ec] py-12 sm:py-16">
+        <div className="mx-auto max-w-3xl px-4">
+          <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center shadow-sm sm:p-10">
+            <ShoppingBag className="mx-auto h-10 w-10 text-stone-400" />
+            <h2 className="mt-3 text-xl font-extrabold text-stone-900">অর্ডার করতে একটি পণ্য নির্বাচন করুন</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-stone-600">
+              এখনো কোনো পণ্য বা কম্বো অর্ডারের জন্য নির্বাচিত নেই। প্রোডাক্ট তালিকায় পণ্য পাওয়া গেলে সেখানে থেকে বেছে নিন।
+            </p>
+            <button
+              type="button"
+              onClick={() => document.getElementById('product-carousel-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="mt-5 rounded-lg bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-800"
+            >
+              প্রোডাক্ট দেখুন
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="checkout-section" className="scroll-mt-24 py-12 sm:py-16 bg-[#f7f4ec] border-b border-amber-900/10">
@@ -498,11 +524,13 @@ export default function WooCommerceCheckout({
                 <div className="flex items-center justify-between gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200/80 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 border border-stone-200">
-                      <img
-                        src={packagingBoxImg}
-                        alt="পণ্য প্রিভিউ"
-                        className="w-full h-full object-cover"
-                      />
+                      {currentBundle.imageUrl ? (
+                        <img src={currentBundle.imageUrl} alt={currentBundle.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-stone-100 text-stone-400" aria-label="ছবি নেই">
+                          <ImageIcon className="h-6 w-6" />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h4 className="font-bold text-stone-900 text-xs sm:text-sm">

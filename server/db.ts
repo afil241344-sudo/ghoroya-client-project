@@ -77,55 +77,6 @@ export interface StoreData {
   };
 }
 
-const DEFAULT_BUNDLES: DBBundle[] = [
-  {
-    id: 'bundle-single',
-    name: '১ বক্স ট্রায়াল প্যাক',
-    subtitle: 'টেস্ট ও ব্যক্তিগত ব্যবহারের জন্য আদর্শ',
-    weight: '৪৫০ গ্রাম (১ বক্স)',
-    boxes: 1,
-    originalPrice: 550,
-    salePrice: 420,
-    savings: 130,
-    badge: 'জনপ্রিয় ট্রায়াল',
-    badgeColor: 'bg-amber-600',
-    freeDelivery: false,
-    description: 'খাঁটি গাওয়া ঘি, প্রিমিয়াম জাফরান ফ্লেভার এবং মুচমুচে সুস্বাদু কারিগরি তৈরি।',
-    inStock: true,
-  },
-  {
-    id: 'bundle-double',
-    name: '২ বক্স ফ্যামিলি সেভার প্যাক',
-    subtitle: 'সবচেয়ে বেশি বিক্রিত এবং পরিবারের পছন্দের প্যাক',
-    weight: '৯০০ গ্রাম (২ বক্স)',
-    boxes: 2,
-    originalPrice: 1100,
-    salePrice: 790,
-    savings: 310,
-    badge: 'সেরা অফার (Best Choice)',
-    badgeColor: 'bg-emerald-700',
-    freeDelivery: false,
-    popular: true,
-    description: 'পরিবারের সবার সাথে আনন্দ ভাগ করে নিতে সবচেয়ে জনপ্রিয় কম্বো। সেভ হবে ৩১০ টাকা!',
-    inStock: true,
-  },
-  {
-    id: 'bundle-family',
-    name: '৪ বক্স গ্র্যান্ড উৎসব ধামাকা প্যাক',
-    subtitle: 'সম্পূর্ণ ফ্রি ডেলিভারি + উপহার বক্স',
-    weight: '১৮০০ গ্রাম (৪ বক্স)',
-    boxes: 4,
-    originalPrice: 2200,
-    salePrice: 1490,
-    savings: 710,
-    badge: 'ফ্রি ডেলিভারি + মেগা সেভিংস',
-    badgeColor: 'bg-rose-700',
-    freeDelivery: true,
-    description: 'আত্মীয়-স্বজন ও মেহমানদারির জন্য উপযুক্ত। কোনো ডেলিভারি চার্জ লাগবে না!',
-    inStock: true,
-  },
-];
-
 const DEFAULT_COUPONS: DBCoupon[] = [
   {
     id: 'c-1',
@@ -272,7 +223,7 @@ class Database {
 
     const defaultData: StoreData = {
       orders: SEED_ORDERS,
-      bundles: DEFAULT_BUNDLES,
+      bundles: [],
       coupons: DEFAULT_COUPONS,
       storeSettings: {
         storeName: 'প্যারামাউন্ট রয়েল ফুডস (Shahi Ghee Shemai)',

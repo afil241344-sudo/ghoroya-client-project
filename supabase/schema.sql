@@ -366,42 +366,6 @@ insert into public.store_settings (id, dhaka_delivery_fee, outside_dhaka_deliver
 values ('default', 70, 130)
 on conflict (id) do nothing;
 
-insert into public.products (
-  id, name, sku, category, unit_weight, cost_price, regular_price,
-  stock_quantity, in_stock, description
-) values
-  ('prod-shemai-450', 'শাহী গাওয়া ঘিয়ে ভাজা লাচ্ছা সেমাই (৪৫০ গ্রাম বক্স)', 'LCH-SHM-450',
-   'লাচ্ছা সেমাই', '৪৫০ গ্রাম', 280, 420, 280, true,
-   'সিরাজগঞ্জের খাঁটি গাওয়া ঘিয়ে ভাজা প্রিমিয়াম মুচমুচে সোনালী সেমাই। কোনো ডালডা নেই।'),
-  ('prod-ghee-250', 'সিরাজগঞ্জের খাঁটি গাওয়া ঘি জার (২৫০ গ্রাম)', 'GHEE-JAR-250',
-   'গাওয়া ঘি', '২৫০ গ্রাম', 320, 480, 95, true,
-   'দেশি গাভীর খাঁটি দুধের সর থেকে ঐতিহ্যবাহী নিয়মে প্রস্তুতকৃত সুঘ্রাণযুক্ত গাওয়া ঘি।'),
-  ('prod-topping-nuts', 'স্পেশাল পেস্তা, কাঠবাদাম ও জাফরান টপিং (১০০ গ্রাম)', 'TOP-NUT-100',
-   'টপিং ও বাদাম', '১০০ গ্রাম', 150, 240, 140, true,
-   'আসল ইরানি জাফরান, পেস্তা ও কাঠবাদাম স্লাইসের রাজকীয় ব্লেন্ড যা সেমাইয়ের স্বাদ দ্বিগুণ করে।'),
-  ('prod-kismis-gold', 'প্রিমিয়াম গোল্ডেন কিশমিশ প্যাক (১৫০ গ্রাম)', 'KSM-GLD-150',
-   'ড্রাই ফ্রুটস', '১৫০ গ্রাম', 110, 180, 110, true,
-   'স্বাদ ও আকারে বড় মিষ্টি বাছাইকৃত গোল্ডেন কিশমিশ।')
-on conflict (id) do nothing;
-
-insert into public.combos (
-  id, name, subtitle, weight, boxes, original_price, sale_price, savings, badge,
-  badge_color, free_delivery, popular, description, in_stock, stock_count, included_product_ids
-) values
-  ('bundle-single', '১ বক্স ট্রায়াল প্যাক', 'টেস্ট ও ব্যক্তিগত ব্যবহারের জন্য আদর্শ',
-   '৪৫০ গ্রাম (১ বক্স)', 1, 550, 420, 130, 'জনপ্রিয় ট্রায়াল', 'bg-amber-600',
-   false, false, 'খাঁটি গাওয়া ঘি, প্রিমিয়াম জাফরান ফ্লেভার এবং মুচমুচে সুস্বাদু কারিগরি তৈরি।',
-   true, 120, 'prod-shemai-450 (1x)'),
-  ('bundle-double', '২ বক্স ফ্যামিলি সেভার প্যাক', 'সবচেয়ে বেশি বিক্রিত এবং পরিবারের পছন্দের প্যাক',
-   '৯০০ গ্রাম (২ বক্স)', 2, 1100, 790, 310, 'সেরা অফার (Best Choice)', 'bg-emerald-700',
-   false, true, 'পরিবারের সবার সাথে আনন্দ ভাগ করে নিতে সবচেয়ে জনপ্রিয় কম্বো। সেভ হবে ৩১০ টাকা!',
-   true, 85, 'prod-shemai-450 (2x)'),
-  ('bundle-family', '৪ বক্স গ্র্যান্ড উৎসব ধামাকা প্যাক', 'সম্পূর্ণ ফ্রি ডেলিভারি + উপহার বক্স',
-   '১৮০০ গ্রাম (৪ বক্স)', 4, 2200, 1490, 710, 'ফ্রি ডেলিভারি + মেগা সেভিংস', 'bg-rose-700',
-   true, false, 'আত্মীয়-স্বজন ও মেহমানদারির জন্য উপযুক্ত। কোনো ডেলিভারি চার্জ লাগবে না!',
-   true, 40, 'prod-shemai-450 (4x)')
-on conflict (id) do nothing;
-
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('catalog', 'catalog', true, 5242880, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'])
 on conflict (id) do update

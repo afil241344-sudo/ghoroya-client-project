@@ -3,9 +3,9 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Maximize2, 
-  X 
+  X,
+  RefreshCw,
 } from 'lucide-react';
-import { DEFAULT_SLIDER_IMAGES } from '../data/sliderImages';
 import { fetchSliderImages } from '../services/dbService';
 
 interface ProductImage {
@@ -15,43 +15,40 @@ interface ProductImage {
   caption: string;
 }
 
-const DEFAULT_SLIDES: ProductImage[] = DEFAULT_SLIDER_IMAGES.map((slide, index) => ({
-  id: `default-${index}`,
-  src: slide.src,
-  alt: slide.altText,
-  caption: slide.caption,
-}));
-
 export default function HeroSlider() {
-  const [slides, setSlides] = useState<ProductImage[]>(DEFAULT_SLIDES);
+  const [slides, setSlides] = useState<ProductImage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const touchStartX = useRef<number | null>(null);
   const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-    fetchSliderImages(true)
-      .then((images) => {
-        if (!isMounted) return;
-        setSlides(images.map((image) => ({
-          id: image.id,
-          src: image.imageUrl,
-          alt: image.altText,
-          caption: image.caption,
-        })));
-        setCurrentIndex(0);
-      })
-      .catch((error: unknown) => {
-        console.error('Could not load active homepage slider images:', error);
-        if (isMounted) setSlides(DEFAULT_SLIDES);
-      });
-
-    return () => {
-      isMounted = false;
-    };
+  const loadSlides = useCallback(async () => {
+    setIsLoading(true);
+    setLoadError(null);
+    try {
+      const images = await fetchSliderImages(true);
+      setSlides(images.map((image) => ({
+        id: image.id,
+        src: image.imageUrl,
+        alt: image.altText,
+        caption: image.caption,
+      })));
+      setCurrentIndex(0);
+    } catch (error: unknown) {
+      console.error('Could not load active homepage slider images:', error);
+      setLoadError(error instanceof Error ? error.message : 'Slider image লোড করা যায়নি।');
+      setSlides([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadSlides();
+  }, [loadSlides]);
 
   const nextSlide = useCallback(() => {
     setCurrentIndex((prev) => slides.length > 0 ? (prev + 1) % slides.length : 0);
@@ -95,7 +92,23 @@ export default function HeroSlider() {
     touchStartX.current = null;
   };
 
-  if (slides.length === 0) return null;
+  if (isLoading) {
+    return (
+      <div role="status" aria-label="Slider loading" className="mx-auto my-4 aspect-video w-[calc(100%-1.5rem)] max-w-5xl animate-pulse rounded-2xl bg-stone-200 sm:my-6" />
+    );
+  }
+  if (slides.length === 0) {
+    if (!loadError) return null;
+    return (
+      <div role="alert" className="mx-auto my-4 flex max-w-5xl items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+        <span>Homepage slider লোড করা যায়নি। {loadError}</span>
+        <button type="button" onClick={() => void loadSlides()} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-bold hover:bg-rose-100">
+          <RefreshCw className="h-3.5 w-3.5" />
+          আবার চেষ্টা করুন
+        </button>
+      </div>
+    );
+  }
   const currentProduct = slides[currentIndex] ?? slides[0];
 
   return (

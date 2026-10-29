@@ -1,56 +1,4 @@
-import { ShemaiBundle, CustomerReview, LiveSalesNotificationItem } from '../types';
-
-export const SHEMAI_BUNDLES: ShemaiBundle[] = [
-  {
-    id: 'bundle-single',
-    name: '১ বক্স ট্রায়াল প্যাক',
-    subtitle: 'টেস্ট ও ব্যক্তিগত ব্যবহারের জন্য আদর্শ',
-    weight: '৪৫০ গ্রাম (১ বক্স)',
-    boxes: 1,
-    originalPrice: 550,
-    salePrice: 420,
-    savings: 130,
-    badge: 'জনপ্রিয় ট্রায়াল',
-    badgeColor: 'bg-amber-600',
-    freeDelivery: false,
-    inStock: true,
-    stockCount: 120,
-    description: 'খাঁটি গাওয়া ঘি, প্রিমিয়াম জাফরান ফ্লেভার এবং মুচমুচে সুস্বাদু কারিগরি তৈরি।'
-  },
-  {
-    id: 'bundle-double',
-    name: '২ বক্স ফ্যামিলি সেভার প্যাক',
-    subtitle: 'সবচেয়ে বেশি বিক্রিত এবং পরিবারের পছন্দের প্যাক',
-    weight: '৯০০ গ্রাম (২ বক্স)',
-    boxes: 2,
-    originalPrice: 1100,
-    salePrice: 790,
-    savings: 310,
-    badge: 'সেরা অফার (Best Choice)',
-    badgeColor: 'bg-emerald-700',
-    freeDelivery: false,
-    inStock: true,
-    stockCount: 85,
-    popular: true,
-    description: 'পরিবারের সবার সাথে আনন্দ ভাগ করে নিতে সবচেয়ে জনপ্রিয় কম্বো। সেভ হবে ৩১০ টাকা!'
-  },
-  {
-    id: 'bundle-family',
-    name: '৪ বক্স গ্র্যান্ড উৎসব ধামাকা প্যাক',
-    subtitle: 'সম্পূর্ণ ফ্রি ডেলিভারি + উপহার বক্স',
-    weight: '১৮০০ গ্রাম (৪ বক্স)',
-    boxes: 4,
-    originalPrice: 2200,
-    salePrice: 1490,
-    savings: 710,
-    badge: 'ফ্রি ডেলিভারি + মেগা সেভিংস',
-    badgeColor: 'bg-rose-700',
-    freeDelivery: true,
-    inStock: true,
-    stockCount: 40,
-    description: 'আত্মীয়-স্বজন ও মেহমানদারির জন্য উপযুক্ত। কোনো ডেলিভারি চার্জ লাগবে না!'
-  }
-];
+import { CustomerReview } from '../types';
 
 export const CUSTOMER_REVIEWS: CustomerReview[] = [
   {
@@ -92,44 +40,6 @@ export const CUSTOMER_REVIEWS: CustomerReview[] = [
     verified: true,
     orderType: '১ বক্স ট্রায়াল প্যাক',
     comment: 'অর্ডার করার ৪৮ ঘণ্টার মধ্যেই কুরিয়ার থেকে হোম ডেলিভারি পেয়েছি। কোনো ভাঙা বা ড্যামেজ ছিল না, বাবল র‍্যাপ দিয়ে খুব যত্নে প্যাক করা ছিল।'
-  }
-];
-
-export const LIVE_SALES_NOTIFICATIONS: LiveSalesNotificationItem[] = [
-  {
-    id: '1',
-    name: 'মাহমুদ করিম',
-    location: 'ধানমন্ডি, ঢাকা',
-    bundleTitle: '২ বক্স ফ্যামিলি সেভার প্যাক',
-    timeAgo: '২ মিনিট আগে'
-  },
-  {
-    id: '2',
-    name: 'নাজনীন আক্তার',
-    location: 'পাঁচলাইশ, চট্টগ্রাম',
-    bundleTitle: '৪ বক্স গ্র্যান্ড উৎসব ধামাকা প্যাক',
-    timeAgo: '৫ মিনিট আগে'
-  },
-  {
-    id: '3',
-    name: 'ডাঃ মোস্তাফিজুর রহমান',
-    location: 'জিন্দাবাজার, সিলেট',
-    bundleTitle: '২ বক্স ফ্যামিলি সেভার প্যাক',
-    timeAgo: '৮ মিনিট আগে'
-  },
-  {
-    id: '4',
-    name: 'ফারজানা ইয়াসমিন',
-    location: 'মিরপুর ১০, ঢাকা',
-    bundleTitle: '১ বক্স ট্রায়াল প্যাক',
-    timeAgo: '১২ মিনিট আগে'
-  },
-  {
-    id: '5',
-    name: 'আহমেদ জুবায়ের',
-    location: 'খুলনা সদর',
-    bundleTitle: '৪ বক্স গ্র্যান্ড উৎসব ধামাকা প্যাক',
-    timeAgo: '১৫ মিনিট আগে'
   }
 ];
 

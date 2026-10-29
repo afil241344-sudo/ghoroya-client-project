@@ -1,18 +1,23 @@
-import { Check, Flame, Gift, Sparkles, ArrowRight, Package } from 'lucide-react';
+import { Check, Flame, Gift, Sparkles, ArrowRight, Image as ImageIcon, Package, RefreshCw } from 'lucide-react';
 import { ShemaiBundle } from '../types';
 import { scrollToCheckout } from '../utils/scrollToCheckout';
-import { getBundleImage } from '../utils/bundleImages';
 
 interface BundleSelectorProps {
   bundles: ShemaiBundle[];
   selectedBundleId: string;
   onSelectBundle: (bundleId: string) => void;
+  isLoading: boolean;
+  loadError: string | null;
+  onRetry: () => void;
 }
 
 export default function BundleSelector({
   bundles,
   selectedBundleId,
   onSelectBundle,
+  isLoading,
+  loadError,
+  onRetry,
 }: BundleSelectorProps) {
   const handleSelect = (id: string) => {
     onSelectBundle(id);
@@ -24,10 +29,12 @@ export default function BundleSelector({
       <div className="max-w-6xl mx-auto px-4">
         {/* Section Heading */}
         <div className="text-center max-w-3xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full mb-3 uppercase tracking-wider">
-            <Flame className="w-3.5 h-3.5 text-amber-600 fill-current" />
-            <span>স্পেশাল অফার বান্ডেল</span>
-          </div>
+          {bundles.length > 0 && (
+            <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full mb-3 uppercase tracking-wider">
+              <Flame className="w-3.5 h-3.5 text-amber-600 fill-current" />
+              <span>স্পেশাল অফার বান্ডেল</span>
+            </div>
+          )}
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-stone-900">
             আপনার পছন্দের প্যাকেজটি নির্বাচন করুন
           </h2>
@@ -36,11 +43,43 @@ export default function BundleSelector({
           </p>
         </div>
 
-        {/* 3 Bundle Cards */}
+        {loadError && (
+          <div role="alert" className="mx-auto mb-5 flex max-w-2xl flex-col items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-center text-sm text-rose-800 sm:flex-row sm:justify-between sm:text-left">
+            <span>কম্বো অফার লোড করা যায়নি। {loadError}</span>
+            <button type="button" onClick={onRetry} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-bold hover:bg-rose-100">
+              <RefreshCw className="h-3.5 w-3.5" />
+              আবার চেষ্টা করুন
+            </button>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div role="status" className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-sm text-stone-600">
+            অফার লোড হচ্ছে...
+          </div>
+        ) : bundles.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-stone-300 bg-white/80 px-5 py-9 text-center">
+            <Package className="mx-auto h-9 w-9 text-stone-400" />
+            <h3 className="mt-3 text-base font-bold text-stone-800">
+              {loadError ? 'অফার সাময়িকভাবে দেখা যাচ্ছে না' : 'এখন কোনো কম্বো অফার নেই'}
+            </h3>
+            <p className="mt-1 text-sm text-stone-600">
+              {loadError
+                ? 'আবার চেষ্টা করুন অথবা উপরের প্রোডাক্ট তালিকা থেকে পণ্য নির্বাচন করুন।'
+                : 'উপরের প্রোডাক্ট তালিকা থেকে পণ্য বেছে অর্ডার করতে পারবেন। নতুন অফার এলে এখানে দেখা যাবে।'}
+            </p>
+            <button
+              type="button"
+              onClick={() => document.getElementById('product-carousel-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="mt-4 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
+            >
+              প্রোডাক্ট দেখুন
+            </button>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
           {bundles.map((bundle) => {
             const isSelected = selectedBundleId === bundle.id;
-            const packImg = getBundleImage(bundle);
 
             return (
               <div
@@ -81,12 +120,18 @@ export default function BundleSelector({
                 <div>
                   {/* Pack Thumbnail Image */}
                   <div className="relative aspect-[16/10] w-full rounded-xl overflow-hidden bg-stone-100 mb-4 border border-stone-100 group">
-                    <img
-                      src={packImg}
-                      alt={bundle.name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      loading="lazy"
-                    />
+                    {bundle.imageUrl ? (
+                      <img
+                        src={bundle.imageUrl}
+                        alt={bundle.name}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-stone-400" aria-label="ছবি নেই">
+                        <ImageIcon className="h-10 w-10" />
+                      </div>
+                    )}
 
                     {/* Weight badge overlay */}
                     <div className="absolute bottom-2 left-2 z-10">
@@ -196,11 +241,8 @@ export default function BundleSelector({
             );
           })}
         </div>
+        )}
 
-        {/* Note below bundles */}
-        <div className="mt-8 text-center text-xs sm:text-sm text-stone-600 bg-white/70 backdrop-blur-sm p-3 rounded-xl border border-amber-900/10 max-w-2xl mx-auto">
-          💡 <strong>পরামর্শ:</strong> ৪ বক্সের গ্র্যান্ড প্যাকেজে পুরো <strong>৳৭১০ টাকা সাশ্রয়</strong> এবং সারাদেশের যেকোনো জেলায় <strong>ডেলিভারি চার্জ সম্পূর্ণ ফ্রি!</strong>
-        </div>
       </div>
     </section>
   );
