@@ -42,17 +42,55 @@
     transform: translate3d(0, 0, 0);
   }
   100% {
-    transform: translate3d(-50%, 0, 0);
+    transform: translate3d(-25%, 0, 0);
   }
 }
 
 .animate-continuous-marquee {
-  animation: continuousMarquee 32s linear infinite;
+  animation: continuousMarquee 64s linear infinite;
   will-change: transform;
 }
 
 .animate-continuous-marquee:hover {
   animation-play-state: paused;
+}
+
+.reviews-marquee-viewport {
+  overflow: hidden;
+  padding: 0.25rem 0 1.25rem;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+}
+
+.reviews-marquee-track {
+  display: flex;
+  width: max-content;
+}
+
+.reviews-marquee-group {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  gap: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reviews-marquee-viewport {
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .reviews-marquee-track {
+    animation: none;
+    transform: none;
+  }
+
+  .reviews-marquee-group[aria-hidden="true"] {
+    display: none;
+  }
 }
 
 /* Custom scrollbar */

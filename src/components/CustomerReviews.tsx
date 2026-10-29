@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Star,
   ShieldCheck,
@@ -8,6 +8,7 @@ import {
   ImagePlus,
   Send,
   X,
+  Eye,
 } from 'lucide-react';
 import { CustomerReview } from '../types';
 import {
@@ -31,6 +32,9 @@ export default function CustomerReviews() {
   const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const [selectedReviewImage, setSelectedReviewImage] = useState<{ url: string; alt: string } | null>(null);
+  const reviewImageModalRef = useRef<HTMLDivElement>(null);
+  const reviewImageTriggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -72,6 +76,25 @@ export default function CustomerReviews() {
     setScreenshotPreview(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
   }, [screenshot]);
+
+  useEffect(() => {
+    if (!selectedReviewImage) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedReviewImage(null);
+    };
+
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    reviewImageModalRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      reviewImageTriggerRef.current?.focus();
+    };
+  }, [selectedReviewImage]);
 
   const visibleReviews = submittedReviews;
   const averageRating = visibleReviews.length
@@ -349,13 +372,17 @@ export default function CustomerReviews() {
           </div>
         )}
 
-        {/* Customer Review Cards Grid */}
-        {visibleReviews.length > 0 && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {visibleReviews.map((rev) => (
-            <div
-              key={rev.id}
-              className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-stone-200/90 flex flex-col justify-between hover:shadow-md transition-shadow"
-            >
+        {/* Customer Review Cards Row */}
+        {visibleReviews.length > 0 && (
+          <div className="reviews-marquee-viewport" role="region" aria-label="গ্রাহকদের রিভিউ">
+            <div className="reviews-marquee-track animate-continuous-marquee">
+              {[0, 1, 2, 3].map((group) => (
+                <div key={group} className="reviews-marquee-group" aria-hidden={group > 0}>
+                  {visibleReviews.map((rev) => (
+                    <div
+                      key={`${group}-${rev.id}`}
+                      className="w-[min(85vw,24rem)] shrink-0 snap-start bg-white p-5 sm:w-[min(44vw,24rem)] lg:w-[min(30vw,24rem)] sm:p-6 rounded-2xl shadow-sm border border-stone-200/90 flex flex-col justify-between hover:shadow-md transition-shadow"
+                    >
               <div>
                 {/* Author Info & Verified Badge */}
                 <div className="flex items-start justify-between gap-2 mb-3">
@@ -396,15 +423,33 @@ export default function CustomerReviews() {
                   "{rev.comment}"
                 </p>
                 {rev.screenshotUrl && (
-                  <a
-                    href={rev.screenshotUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-800 hover:underline"
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      reviewImageTriggerRef.current = event.currentTarget;
+                      setSelectedReviewImage({
+                        url: rev.screenshotUrl!,
+                        alt: `${rev.author}-এর review screenshot`,
+                      });
+                    }}
+                    aria-label={`${rev.author}-এর রিভিউ ছবি বড় করে দেখুন`}
+                    className="mt-4 inline-flex max-w-full items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 p-2.5 text-left transition-colors hover:border-emerald-200 hover:bg-emerald-50/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700"
                   >
-                    <img src={rev.screenshotUrl} alt={`${rev.author}-এর review screenshot`} className="h-12 w-12 rounded-lg border border-stone-200 object-cover" loading="lazy" decoding="async" />
-                    ছবি দেখুন
-                  </a>
+                    <img
+                      src={rev.screenshotUrl}
+                      alt={`${rev.author}-এর review screenshot`}
+                      className="h-[4.5rem] w-[4.5rem] shrink-0 rounded-lg border border-stone-200 bg-white object-contain p-0.5 sm:h-20 sm:w-20"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-semibold text-stone-700">ক্রেতার পাঠানো ছবি</span>
+                      <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800">
+                        পূর্ণ ছবি দেখুন
+                        <Eye className="h-3 w-3" />
+                      </span>
+                    </span>
+                  </button>
                 )}
                 {rev.screenshotError && (
                   <p role="status" className="mt-2 text-[11px] text-amber-700">
@@ -422,9 +467,49 @@ export default function CustomerReviews() {
                   </span>
                 ) : <span>গ্রাহকের মতামত</span>}
               </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>}
+          </div>
+        )}
+
+        {selectedReviewImage && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-stone-950/85 p-4 backdrop-blur-sm"
+            onClick={() => setSelectedReviewImage(null)}
+          >
+            <div
+              ref={reviewImageModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="review-image-modal-title"
+              tabIndex={-1}
+              className="relative flex max-h-[92vh] w-full max-w-4xl flex-col items-center rounded-2xl bg-white p-3 shadow-2xl outline-none sm:p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="mb-3 flex w-full items-center justify-between gap-3 px-1">
+                <h3 id="review-image-modal-title" className="text-sm font-bold text-stone-800">
+                  ক্রেতার পাঠানো ছবি
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReviewImage(null)}
+                  aria-label="ছবি বন্ধ করুন"
+                  className="rounded-full p-2 text-stone-600 transition hover:bg-stone-100 hover:text-stone-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <img
+                src={selectedReviewImage.url}
+                alt={selectedReviewImage.alt}
+                className="max-h-[calc(92vh-5rem)] max-w-full rounded-lg object-contain"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Video / Photo Reviews Note */}
         <div className="mt-8 bg-amber-50/80 rounded-xl p-4 border border-amber-200/80 text-center max-w-2xl mx-auto text-xs sm:text-sm text-amber-900">
