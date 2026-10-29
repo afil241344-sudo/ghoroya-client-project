@@ -1,25 +1,7 @@
 import { Check, Flame, Gift, Sparkles, ArrowRight, Package } from 'lucide-react';
 import { ShemaiBundle } from '../types';
 import { scrollToCheckout } from '../utils/scrollToCheckout';
-
-// Authentic Product & Pack Images
-import heroBowlImg from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
-import gheeCloseupImg from '../assets/images/shemai_ghee_closeup_1793175979653.jpg';
-import packagingBoxImg from '../assets/images/shemai_packaging_box_1793156354481.jpg';
-import gheeJarImg from '../assets/images/shemai_ghee_jar_1793175996687.jpg';
-import preparedDishImg from '../assets/images/prepared_malai_shemai_1793156370328.jpg';
-
-// Map bundle IDs to relevant pack thumbnail image
-const BUNDLE_IMAGE_MAP: Record<string, string> = {
-  'bundle-single': packagingBoxImg,
-  'bundle-double': heroBowlImg,
-  'bundle-family': preparedDishImg,
-  'prod-shemai-450': heroBowlImg,
-  'prod-ghee-250': gheeJarImg,
-  'prod-topping-nuts': gheeCloseupImg,
-  'prod-kismis-gold': preparedDishImg,
-  'prod-shemai-shahi-box': packagingBoxImg,
-};
+import { getBundleImage } from '../utils/bundleImages';
 
 interface BundleSelectorProps {
   bundles: ShemaiBundle[];
@@ -35,11 +17,6 @@ export default function BundleSelector({
   const handleSelect = (id: string) => {
     onSelectBundle(id);
     scrollToCheckout();
-  };
-
-  const getBundleImage = (bundle: ShemaiBundle): string => {
-    if (bundle.imageUrl) return bundle.imageUrl;
-    return BUNDLE_IMAGE_MAP[bundle.id] || packagingBoxImg;
   };
 
   return (

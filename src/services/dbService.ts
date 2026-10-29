@@ -19,7 +19,7 @@ export interface BackendOrder {
   deliveryCharge: number;
   discount: number;
   totalAmount: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'printed' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   courierName?: string;
   courierTrackingCode?: string;
   createdAt: string;

@@ -51,12 +51,16 @@ create table if not exists public.orders (
   discount numeric not null default 0,
   total_amount numeric not null,
   status text not null default 'pending'
-    check (status in ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
+    check (status in ('pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled')),
   courier_name text,
   courier_tracking_code text,
   created_at timestamptz not null default now(),
   updated_at timestamptz
 );
+
+alter table public.orders drop constraint if exists orders_status_check;
+alter table public.orders add constraint orders_status_check
+  check (status in ('pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled'));
 
 alter table public.products enable row level security;
 alter table public.combos enable row level security;

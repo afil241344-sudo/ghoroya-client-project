@@ -26,7 +26,7 @@ export interface DBOrder {
   paymentMethod: 'cod' | 'bkash';
   bkashTxId?: string;
   couponCode?: string;
-  status: 'pending' | 'confirmed' | 'packaging' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'printed' | 'processing' | 'packaging' | 'shipped' | 'delivered' | 'cancelled';
   courierName?: string;
   courierConsignmentId?: string;
   adminNote?: string;

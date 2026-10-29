@@ -118,7 +118,7 @@ apiRouter.post('/orders', (req: Request, res: Response) => {
 apiRouter.patch('/orders/:id/status', (req: Request, res: Response) => {
   try {
     const { status, courierConsignmentId, courierName } = req.body;
-    const allowed = ['pending', 'confirmed', 'packaging', 'shipped', 'delivered', 'cancelled'];
+    const allowed = ['pending', 'confirmed', 'printed', 'processing', 'packaging', 'shipped', 'delivered', 'cancelled'];
 
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, error: 'Invalid order status' });

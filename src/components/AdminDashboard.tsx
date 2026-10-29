@@ -26,6 +26,7 @@ import {
   DollarSign,
   AlertCircle,
   Check,
+  Printer,
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
 import {
@@ -46,10 +47,21 @@ import {
 } from '../services/dbService';
 import { uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
+import { getBundleImage } from '../utils/bundleImages';
 
 function isOrderStatus(status: string): status is BackendOrder['status'] {
-  return ['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status);
+  return ['pending', 'confirmed', 'printed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status);
 }
+
+const ORDER_STATUS_LABELS: Record<BackendOrder['status'], string> = {
+  pending: 'Pending',
+  confirmed: 'Confirmed',
+  printed: 'Printed',
+  processing: 'Processing',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
 
 interface AdminDashboardProps {
   onNavigateToStore: () => void;
@@ -212,6 +224,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     orderId: string,
     newStatus: BackendOrder['status']
   ) => {
+    const previousStatus = orders.find((order) => order.orderId === orderId)?.status;
     setUpdatingOrderId(orderId);
     setOrders((prev) =>
       prev.map((o) => (o.orderId === orderId ? { ...o, status: newStatus } : o))
@@ -219,16 +232,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
     try {
       await updateOrderStatus(orderId, { status: newStatus });
-      const statusLabels: Record<string, string> = {
-        pending: 'Pending (পেন্ডিং)',
-        processing: 'Processing (প্রসেসিং)',
-        shipped: 'Shipped (কুরিয়ারে)',
-        delivered: 'Delivered (ডেলিভার্ড)',
-        cancelled: 'Cancelled (বাতিল)',
-      };
-      showToast(`অর্ডার #${orderId} সফলভাবে ${statusLabels[newStatus] || newStatus} এ আপডেট হয়েছে!`);
+      showToast(`অর্ডার #${orderId} সফলভাবে ${ORDER_STATUS_LABELS[newStatus]} এ আপডেট হয়েছে!`);
     } catch (err) {
       console.error('Failed to update status in database:', err);
+      if (previousStatus) {
+        setOrders((prev) =>
+          prev.map((order) => (order.orderId === orderId ? { ...order, status: previousStatus } : order))
+        );
+      }
       showToast('স্ট্যাটাস আপডেট করতে সমস্যা হয়েছে, অনুগ্রহ করে আবার চেষ্টা করুন।');
     } finally {
       setUpdatingOrderId(null);
@@ -727,12 +738,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               {/* Status Segmented Buttons */}
               <div className="grid grid-cols-3 gap-1 pb-1 text-[11px] sm:flex sm:flex-wrap sm:pb-0 sm:text-xs">
                 {[
-                  { key: 'all', label: 'সব' },
-                  { key: 'pending', label: 'নতুন' },
-                  { key: 'processing', label: 'প্রসেসিং' },
-                  { key: 'shipped', label: 'কুরিয়ারে' },
-                  { key: 'delivered', label: 'ডেলিভার্ড' },
-                  { key: 'cancelled', label: 'বাতিল' },
+                  { key: 'all', label: 'All' },
+                  { key: 'pending', label: 'Pending' },
+                  { key: 'confirmed', label: 'Confirmed' },
+                  { key: 'processing', label: 'Processing' },
+                  { key: 'shipped', label: 'Shipped' },
+                  { key: 'delivered', label: 'Delivered' },
+                  { key: 'printed', label: 'Printed' },
+                  { key: 'cancelled', label: 'Cancelled' },
                 ].map((st) => (
                   <button
                     key={st.key}
@@ -756,6 +769,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   কোনো অর্ডার পাওয়া যায়নি।
                 </div>
               ) : filteredOrders.map((order) => {
+                const bundleImage = getBundleImage(
+                  combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
+                );
                 const whatsappUrl = `https://wa.me/88${order.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                   `সালামু আলাইকুম ${order.customerName}! প্যারামাউন্ট ফুডস থেকে আপনার লাচ্ছা সেমাই এর অর্ডার #${order.orderId} সম্পর্কে যোগাযোগ করছি।`
                 )}`;
@@ -774,7 +790,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     </div>
 
                     <div className="mt-3 space-y-1 border-t border-stone-200 pt-3 text-xs">
-                      <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={bundleImage}
+                          alt={order.bundleName}
+                          className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover"
+                        />
+                        <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
+                      </div>
                       <p className="break-words text-stone-600">{order.customerAddress}</p>
                       <p className="text-stone-500">{order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'} · {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}</p>
                       {order.bkashTxId && <p className="break-all text-stone-500">Trx: {order.bkashTxId}</p>}
@@ -807,7 +830,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     )}
 
                     <label className="mt-3 block text-[11px] font-bold text-stone-600">
-                      অর্ডার স্ট্যাটাস
+                      Order status
                       <select
                         value={order.status}
                         onChange={(event) => {
@@ -817,11 +840,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         disabled={updatingOrderId === order.orderId}
                         className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 disabled:opacity-50"
                       >
-                        <option value="pending">নতুন</option>
-                        <option value="processing">প্রসেসিং</option>
-                        <option value="shipped">কুরিয়ারে</option>
-                        <option value="delivered">ডেলিভার্ড</option>
-                        <option value="cancelled">বাতিল</option>
+                        <option value="pending">Pending</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="processing">Processing</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                        <option value="printed">Printed</option>
+                        <option value="cancelled">Cancelled</option>
                       </select>
                     </label>
 
@@ -872,6 +897,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     </tr>
                   ) : (
                     filteredOrders.map((order) => {
+                      const bundleImage = getBundleImage(
+                        combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
+                      );
                       const whatsappUrl = `https://wa.me/88${order.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
                         `সালামু আলাইকুম ${order.customerName}! প্যারামাউন্ট ফুডস থেকে আপনার লাচ্ছা সেমাই এর অর্ডার #${order.orderId} সম্পর্কে যোগাযোগ করছি।`
                       )}`;
@@ -910,10 +938,19 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
                           {/* Bundle & Qty */}
                           <td className="py-3 px-3 align-top">
-                            <span className="font-bold text-stone-900">{order.bundleName}</span>
-                            <span className="block text-[11px] text-stone-500">
-                              পরিমাণ: <strong>{order.quantity} টি</strong>
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={bundleImage}
+                                alt={order.bundleName}
+                                className="h-12 w-12 shrink-0 rounded-lg border border-stone-200 object-cover"
+                              />
+                              <div>
+                                <span className="font-bold text-stone-900">{order.bundleName}</span>
+                                <span className="block text-[11px] text-stone-500">
+                                  পরিমাণ: <strong>{order.quantity} টি</strong>
+                                </span>
+                              </div>
+                            </div>
                           </td>
 
                           {/* Total */}
@@ -947,6 +984,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
                                   order.status === 'pending'
                                     ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                    : order.status === 'confirmed'
+                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    : order.status === 'printed'
+                                    ? 'bg-violet-100 text-violet-900 border-violet-300'
                                     : order.status === 'processing'
                                     ? 'bg-sky-100 text-sky-900 border-sky-300'
                                     : order.status === 'shipped'
@@ -960,24 +1001,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                                   className={`w-1.5 h-1.5 rounded-full ${
                                     order.status === 'pending'
                                       ? 'bg-amber-600 animate-pulse'
+                                      : order.status === 'confirmed' || order.status === 'delivered'
+                                      ? 'bg-emerald-600'
+                                      : order.status === 'printed'
+                                      ? 'bg-violet-600'
+                                      : order.status === 'processing'
+                                      ? 'bg-sky-600 animate-pulse'
                                       : order.status === 'shipped'
                                       ? 'bg-indigo-600 animate-pulse'
-                                      : order.status === 'delivered'
-                                      ? 'bg-emerald-600'
                                       : 'bg-rose-600'
                                   }`}
                                 />
-                                <span>
-                                  {order.status === 'pending'
-                                    ? 'পেন্ডিং (Pending)'
-                                    : order.status === 'processing'
-                                    ? 'প্রসেসিং (Processing)'
-                                    : order.status === 'shipped'
-                                    ? 'কুরিয়ারে (Shipped)'
-                                    : order.status === 'delivered'
-                                    ? 'ডেলিভার্ড (Delivered)'
-                                    : 'বাতিল (Cancelled)'}
-                                </span>
+                                <span>{ORDER_STATUS_LABELS[order.status]}</span>
                               </span>
                             </div>
 
@@ -997,6 +1032,38 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                               >
                                 <Clock className="w-3 h-3" />
                                 <span>Pending</span>
+                              </button>
+
+                              {/* Confirmed Badge */}
+                              <button
+                                type="button"
+                                onClick={() => handleStatusChange(order.orderId, 'confirmed')}
+                                disabled={updatingOrderId === order.orderId}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                                  order.status === 'confirmed'
+                                    ? 'bg-emerald-700 text-white border-emerald-800 shadow-xs ring-2 ring-emerald-400/50'
+                                    : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
+                                }`}
+                                title="অর্ডার নিশ্চিত করুন"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Confirm</span>
+                              </button>
+
+                              {/* Processing Badge */}
+                              <button
+                                type="button"
+                                onClick={() => handleStatusChange(order.orderId, 'processing')}
+                                disabled={updatingOrderId === order.orderId}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                                  order.status === 'processing'
+                                    ? 'bg-sky-700 text-white border-sky-800 shadow-xs ring-2 ring-sky-400/50'
+                                    : 'bg-sky-50 hover:bg-sky-100 text-sky-800 border-sky-200'
+                                }`}
+                                title="Mark order as processing"
+                              >
+                                <Package className="w-3 h-3" />
+                                <span>Processing</span>
                               </button>
 
                               {/* 2. Shipped Badge */}
@@ -1029,6 +1096,22 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                               >
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>Delivered</span>
+                              </button>
+
+                              {/* Printed Badge */}
+                              <button
+                                type="button"
+                                onClick={() => handleStatusChange(order.orderId, 'printed')}
+                                disabled={updatingOrderId === order.orderId}
+                                className={`px-2 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer border ${
+                                  order.status === 'printed'
+                                    ? 'bg-violet-700 text-white border-violet-800 shadow-xs ring-2 ring-violet-400/50'
+                                    : 'bg-violet-50 hover:bg-violet-100 text-violet-800 border-violet-200'
+                                }`}
+                                title="Mark order as printed"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>Printed</span>
                               </button>
 
                               {/* Cancel Toggle Button */}

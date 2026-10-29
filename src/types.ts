@@ -69,7 +69,7 @@ export interface PlacedOrder {
   deliveryCharge: number;
   discount: number;
   totalAmount: number;
-  status: 'pending' | 'confirmed' | 'packaging' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'printed' | 'processing' | 'packaging' | 'shipped' | 'delivered' | 'cancelled';
   courierName?: string;
   courierConsignmentId?: string;
   adminNote?: string;
