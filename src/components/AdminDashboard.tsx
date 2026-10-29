@@ -2387,6 +2387,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   )}
 
                   <div>
+                    <div className="mb-3 flex h-36 items-center justify-center overflow-hidden rounded-xl border border-stone-200 bg-white">
+                      {combo.imageUrl ? (
+                        <img
+                          src={combo.imageUrl}
+                          alt={`${combo.name} কম্বোর ছবি`}
+                          className="h-full w-full object-contain"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <ImageIcon className="h-9 w-9 text-stone-300" aria-label="কম্বোর ছবি নেই" />
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
                         {combo.weight}
@@ -2765,9 +2777,23 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               ) : productsList.map((product) => (
                 <article key={product.id} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-white">
+                        {product.imageUrl ? (
+                          <img
+                            src={product.imageUrl}
+                            alt={`${product.name} প্রোডাক্টের ছবি`}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <ImageIcon className="h-5 w-5 text-stone-300" aria-label="প্রোডাক্টের ছবি নেই" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
                       <h4 className="break-words text-sm font-bold text-stone-900">{product.name}</h4>
                       <p className="mt-1 text-[11px] text-stone-500">{product.category} · {product.unitWeight}</p>
+                      </div>
                     </div>
                     <span className="shrink-0 text-sm font-black text-emerald-800">৳{product.regularPrice}</span>
                   </div>
@@ -2853,15 +2879,31 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       <tr key={prod.id} className="hover:bg-indigo-50/20 transition-colors">
                         {/* Name & description */}
                         <td className="py-3 px-3 align-top max-w-xs">
-                          <span className="font-extrabold text-stone-900 block text-xs">
-                            {prod.name}
-                          </span>
-                          {prod.description && (
-                            <span className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
-                              {prod.description}
-                            </span>
-                          )}
-                          <span className="text-[10px] text-stone-400 font-mono">ID: {prod.id}</span>
+                          <div className="flex items-start gap-2.5">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-stone-200 bg-stone-50">
+                              {prod.imageUrl ? (
+                                <img
+                                  src={prod.imageUrl}
+                                  alt={`${prod.name} প্রোডাক্টের ছবি`}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <ImageIcon className="h-4 w-4 text-stone-300" aria-label="প্রোডাক্টের ছবি নেই" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-extrabold text-stone-900 block text-xs">
+                                {prod.name}
+                              </span>
+                              {prod.description && (
+                                <span className="text-[11px] text-stone-500 line-clamp-1 mt-0.5">
+                                  {prod.description}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-stone-400 font-mono">ID: {prod.id}</span>
+                            </div>
+                          </div>
                         </td>
 
                         {/* SKU */}
