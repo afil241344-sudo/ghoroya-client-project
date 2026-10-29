@@ -63,6 +63,95 @@ const ORDER_STATUS_LABELS: Record<BackendOrder['status'], string> = {
   cancelled: 'Cancelled',
 };
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] ?? character);
+}
+
+function buildInvoicesHtml(orders: BackendOrder[], combos: BackendCombo[]): string {
+  const invoices = orders.map((order) => {
+    const bundleImage = getBundleImage(
+      combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
+    );
+    const invoiceDate = new Date(order.createdAt).toLocaleString('en-GB');
+    const paymentMethod = order.paymentMethod === 'cod' ? 'Cash on delivery' : 'bKash/Nagad';
+
+    return `
+      <article class="invoice">
+        <header>
+          <div>
+            <h1>Paramount Foods</h1>
+            <p>Order invoice</p>
+          </div>
+          <div class="order-number">
+            <strong>Invoice</strong>
+            <span>#${escapeHtml(order.orderId)}</span>
+            <small>${escapeHtml(invoiceDate)}</small>
+          </div>
+        </header>
+        <section class="customer">
+          <div><strong>Customer</strong><span>${escapeHtml(order.customerName)}</span></div>
+          <div><strong>Phone</strong><span>${escapeHtml(order.customerPhone)}</span></div>
+          <div><strong>Address</strong><span>${escapeHtml(order.customerAddress)}</span></div>
+          <div><strong>Payment</strong><span>${escapeHtml(paymentMethod)}</span></div>
+          ${order.note ? `<div><strong>Note</strong><span>${escapeHtml(order.note)}</span></div>` : ''}
+        </section>
+        <table>
+          <thead><tr><th>Product</th><th>Qty</th><th>Subtotal</th></tr></thead>
+          <tbody><tr>
+            <td class="product">
+              <img src="${escapeHtml(bundleImage)}" alt="">
+              <span>${escapeHtml(order.bundleName)}</span>
+            </td>
+            <td>${order.quantity}</td>
+            <td>৳${order.itemSubtotal.toLocaleString()}</td>
+          </tr></tbody>
+        </table>
+        <section class="totals">
+          <div><span>Delivery</span><span>৳${order.deliveryCharge.toLocaleString()}</span></div>
+          <div><span>Discount</span><span>- ৳${order.discount.toLocaleString()}</span></div>
+          <div class="grand-total"><strong>Total</strong><strong>৳${order.totalAmount.toLocaleString()}</strong></div>
+        </section>
+        <footer>Thank you for your order.</footer>
+      </article>`;
+  }).join('');
+
+  return `<!doctype html>
+    <html lang="en"><head><meta charset="utf-8"><title>Order invoices</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; color: #292524; font: 14px Arial, sans-serif; }
+      .invoice { min-height: 265mm; page-break-after: always; break-after: page; }
+      .invoice:last-child { page-break-after: auto; break-after: auto; }
+      header { display: flex; justify-content: space-between; border-bottom: 2px solid #047857; padding-bottom: 18px; }
+      h1 { margin: 0; color: #065f46; font-size: 24px; }
+      header p { margin: 6px 0 0; color: #78716c; }
+      .order-number { display: grid; gap: 5px; text-align: right; }
+      .order-number span { font-size: 18px; font-weight: bold; }
+      .order-number small { color: #78716c; }
+      .customer { display: grid; gap: 12px; margin: 24px 0; }
+      .customer div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; }
+      .customer strong { color: #57534e; }
+      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+      th, td { padding: 12px 8px; border-bottom: 1px solid #e7e5e4; text-align: left; }
+      th { background: #f5f5f4; }
+      td:last-child, th:last-child { text-align: right; }
+      .product { display: flex; align-items: center; gap: 12px; }
+      .product img { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; }
+      .totals { width: 260px; margin: 20px 0 0 auto; }
+      .totals div { display: flex; justify-content: space-between; padding: 7px 0; }
+      .grand-total { margin-top: 4px; border-top: 2px solid #a8a29e; font-size: 17px; }
+      footer { margin-top: 48px; border-top: 1px solid #e7e5e4; padding-top: 14px; text-align: center; color: #78716c; }
+      @media screen { body { max-width: 800px; margin: 24px auto; } .invoice { padding: 20px; } }
+    </style></head><body>${invoices}</body></html>`;
+}
+
 interface AdminDashboardProps {
   onNavigateToStore: () => void;
   onClose?: () => void;
@@ -112,6 +201,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
   const [notification, setNotification] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [isPrintingOrders, setIsPrintingOrders] = useState(false);
 
   const showToast = (msg: string) => {
     setNotification(msg);
@@ -449,6 +540,128 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     return matchesSearch && matchesStatus;
   });
 
+  const selectedOrders = orders.filter((order) => selectedOrderIds.includes(order.orderId));
+  const allVisibleOrdersSelected =
+    filteredOrders.length > 0 &&
+    filteredOrders.every((order) => selectedOrderIds.includes(order.orderId));
+
+  const toggleOrderSelection = (orderId: string) => {
+    setSelectedOrderIds((selected) =>
+      selected.includes(orderId)
+        ? selected.filter((id) => id !== orderId)
+        : [...selected, orderId],
+    );
+  };
+
+  const toggleVisibleOrderSelection = () => {
+    const visibleIds = filteredOrders.map((order) => order.orderId);
+    setSelectedOrderIds((selected) => {
+      if (visibleIds.every((id) => selected.includes(id))) {
+        return selected.filter((id) => !visibleIds.includes(id));
+      }
+      return [...new Set([...selected, ...visibleIds])];
+    });
+  };
+
+  const markOrdersPrinted = async (printedOrders: BackendOrder[]) => {
+    const results = await Promise.allSettled(
+      printedOrders.map((order) => updateOrderStatus(order.orderId, { status: 'printed' })),
+    );
+    const failures = results.flatMap((result, index): { orderId: string; error: unknown }[] => {
+      if (result.status === 'fulfilled') return [];
+      console.error(`Failed to mark order ${printedOrders[index].orderId} as printed:`, result.reason);
+      return [{ orderId: printedOrders[index].orderId, error: result.reason }];
+    });
+    const successfulIds = results.flatMap((result, index) =>
+      result.status === 'fulfilled' ? [printedOrders[index].orderId] : [],
+    );
+
+    setOrders((current) =>
+      current.map((order) =>
+        successfulIds.includes(order.orderId) ? { ...order, status: 'printed' } : order,
+      ),
+    );
+    setSelectedOrderIds((selected) => selected.filter((id) => !successfulIds.includes(id)));
+    setIsPrintingOrders(false);
+
+    if (failures.length > 0) {
+      const firstError = failures[0].error instanceof Error
+        ? failures[0].error.message
+        : String(failures[0].error);
+      if (/orders_status_check|check constraint/i.test(firstError)) {
+        showToast(`${successfulIds.length}টি Printed হয়েছে; বাকিগুলোর জন্য Supabase SQL Editor-এ supabase/schema.sql চালান।`);
+      } else {
+        showToast(`${successfulIds.length}টি Printed হয়েছে; ${failures.length}টির status save হয়নি: ${firstError}`);
+      }
+    } else {
+      showToast(`${successfulIds.length}টি অর্ডার Printed status-এ আপডেট হয়েছে।`);
+    }
+  };
+
+  const handlePrintSelectedOrders = () => {
+    if (selectedOrders.length === 0 || isPrintingOrders) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      showToast('Invoice print window খোলা যায়নি। Browser-এর pop-up অনুমতি দিন।');
+      return;
+    }
+
+    const ordersToPrint = [...selectedOrders];
+    setIsPrintingOrders(true);
+
+    let printStarted = false;
+    let printFinished = false;
+    let imageWaitTimeout = 0;
+    const finishPrint = () => {
+      if (printFinished) return;
+      printFinished = true;
+      window.clearTimeout(imageWaitTimeout);
+      void markOrdersPrinted(ordersToPrint);
+      if (!printWindow.closed) printWindow.close();
+    };
+
+    const startPrint = () => {
+      if (printStarted) return;
+      printStarted = true;
+      if (printWindow.closed) {
+        setIsPrintingOrders(false);
+        showToast('Invoice window বন্ধ হয়েছে; অর্ডারগুলো Printed করা হয়নি।');
+        return;
+      }
+
+      try {
+        printWindow.focus();
+        printWindow.print();
+        finishPrint();
+      } catch (error) {
+        console.error('Could not open the invoice print dialog:', error);
+        window.clearTimeout(imageWaitTimeout);
+        setIsPrintingOrders(false);
+        printWindow.close();
+        showToast('Invoice print করা যায়নি। আবার চেষ্টা করুন।');
+      }
+    };
+
+    printWindow.addEventListener('afterprint', finishPrint, { once: true });
+
+    try {
+      printWindow.document.write(buildInvoicesHtml(ordersToPrint, combos));
+      printWindow.document.close();
+
+      const imagesReady = Promise.allSettled(
+        Array.from(printWindow.document.images, (image) => image.decode()),
+      );
+      imageWaitTimeout = window.setTimeout(startPrint, 3000);
+      void imagesReady.then(startPrint);
+    } catch (error) {
+      console.error('Could not prepare order invoices:', error);
+      setIsPrintingOrders(false);
+      printWindow.close();
+      showToast('Invoice তৈরি করা যায়নি। আবার চেষ্টা করুন।');
+    }
+  };
+
   // Calculate metrics
   const totalRevenue = orders.reduce((sum, o) => (o.status !== 'cancelled' ? sum + o.totalAmount : sum), 0);
   const pendingOrdersCount = orders.filter((o) => o.status === 'pending').length;
@@ -762,6 +975,44 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-stone-700">
+                <input
+                  type="checkbox"
+                  checked={allVisibleOrdersSelected}
+                  onChange={toggleVisibleOrderSelection}
+                  disabled={filteredOrders.length === 0 || isPrintingOrders}
+                  className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
+                  aria-label="Select all visible orders"
+                />
+                Select all visible orders
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-stone-600">
+                  {selectedOrders.length} selected
+                </span>
+                {selectedOrderIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrderIds([])}
+                    disabled={isPrintingOrders}
+                    className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+                  >
+                    Clear selection
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={handlePrintSelectedOrders}
+                  disabled={selectedOrders.length === 0 || isPrintingOrders}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Printer className="h-4 w-4" />
+                  {isPrintingOrders ? 'Preparing invoices...' : 'Print now'}
+                </button>
+              </div>
+            </div>
+
             {/* Mobile order cards */}
             <div className="space-y-3 md:hidden">
               {filteredOrders.length === 0 ? (
@@ -779,6 +1030,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 return (
                   <article key={order.orderId} className="min-w-0 rounded-xl border border-stone-200 bg-stone-50 p-3">
                     <div className="flex items-start justify-between gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedOrderIds.includes(order.orderId)}
+                        onChange={() => toggleOrderSelection(order.orderId)}
+                        disabled={isPrintingOrders}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-stone-300 accent-emerald-700"
+                        aria-label={`Select order ${order.orderId}`}
+                      />
                       <div className="min-w-0">
                         <p className="break-all font-mono text-xs font-bold text-emerald-800">#{order.orderId}</p>
                         <p className="mt-1 break-words text-sm font-bold text-stone-900">{order.customerName}</p>
@@ -875,9 +1134,19 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
             {/* Orders Table */}
             <div className="hidden overflow-x-auto rounded-xl border border-stone-200 md:block">
-              <table className="w-full min-w-[980px] text-left text-xs border-collapse">
+              <table className="w-full min-w-[1040px] text-left text-xs border-collapse">
                 <thead className="bg-stone-50 border-b border-stone-200 text-stone-700 font-bold uppercase tracking-wider">
                   <tr>
+                    <th className="py-3 px-3">
+                      <input
+                        type="checkbox"
+                        checked={allVisibleOrdersSelected}
+                        onChange={toggleVisibleOrderSelection}
+                        disabled={filteredOrders.length === 0 || isPrintingOrders}
+                        className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
+                        aria-label="Select all visible orders"
+                      />
+                    </th>
                     <th className="py-3 px-3">অর্ডার আইডি</th>
                     <th className="py-3 px-3">গ্রাহকের বিবরণ</th>
                     <th className="py-3 px-3">প্যাকেজ / কম্বো</th>
@@ -891,7 +1160,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 <tbody className="divide-y divide-stone-200">
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-8 text-center text-stone-500">
+                      <td colSpan={9} className="py-8 text-center text-stone-500">
                         কোনো অর্ডার পাওয়া যায়নি।
                       </td>
                     </tr>
@@ -906,6 +1175,16 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
                       return (
                         <tr key={order.orderId} className="hover:bg-amber-50/20 transition-colors">
+                          <td className="py-3 px-3 align-top">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrderIds.includes(order.orderId)}
+                              onChange={() => toggleOrderSelection(order.orderId)}
+                              disabled={isPrintingOrders}
+                              className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
+                              aria-label={`Select order ${order.orderId}`}
+                            />
+                          </td>
                           {/* Order ID & Date */}
                           <td className="py-3 px-3 font-mono font-bold text-stone-900 align-top">
                             <span className="text-emerald-800">#{order.orderId}</span>

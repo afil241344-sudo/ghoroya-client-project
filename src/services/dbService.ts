@@ -271,14 +271,17 @@ export async function updateOrderStatus(
   updates: Partial<BackendOrder>,
 ): Promise<void> {
   const { id: _id, orderId: _orderId, createdAt: _createdAt, ...allowedUpdates } = updates;
-  const { error } = await getSupabaseClient()
+  const { data, error } = await getSupabaseClient()
     .from(ORDERS_TABLE)
     .update({
       ...toDatabaseRow(allowedUpdates),
       updated_at: new Date().toISOString(),
     })
-    .eq('order_id', orderId);
+    .eq('order_id', orderId)
+    .select('order_id')
+    .maybeSingle();
   throwOnError(error);
+  if (!data) throw new Error(`Order ${orderId} was not updated. Check admin permissions and order ID.`);
 }
 
 export async function deleteOrder(orderId: string): Promise<void> {

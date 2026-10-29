@@ -1,6 +1,6 @@
 # Supabase setup
 
-1. In Supabase SQL Editor, run [`schema.sql`](./schema.sql). It creates the products, combos, and orders tables, the public `catalog` image bucket, RLS policies, and realtime order updates.
+1. In Supabase SQL Editor, run [`schema.sql`](./schema.sql). It creates the products, combos, and orders tables, the public `catalog` image bucket, RLS policies, and realtime order updates. When updating an existing deployment, run it again to apply schema changes such as allowing the `printed` order status.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in the deployment environment. The browser must only receive the publishable key; never put a secret/service-role key in a `VITE_*` variable.
 3. In Supabase Auth, create the admin user. In SQL Editor, assign its trusted app metadata:
 
