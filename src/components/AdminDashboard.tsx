@@ -90,6 +90,11 @@ function getLocalDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function formatOrderUnitPrice(order: BackendOrder): string {
+  const unitPrice = order.quantity > 0 ? order.itemSubtotal / order.quantity : order.itemSubtotal;
+  return unitPrice.toLocaleString('en-BD', { maximumFractionDigits: 2 });
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -125,22 +130,24 @@ function buildInvoicesHtml(orders: BackendOrder[], combos: BackendCombo[]): stri
           <div><strong>Customer</strong><span>${escapeHtml(order.customerName)}</span></div>
           <div><strong>Phone</strong><span>${escapeHtml(order.customerPhone)}</span></div>
           <div><strong>Address</strong><span>${escapeHtml(order.customerAddress)}</span></div>
+          <div><strong>Delivery area</strong><span>${order.deliveryArea === 'dhaka' ? 'Inside Dhaka' : 'Outside Dhaka'}</span></div>
           <div><strong>Payment</strong><span>${escapeHtml(paymentMethod)}</span></div>
           ${order.note ? `<div><strong>Note</strong><span>${escapeHtml(order.note)}</span></div>` : ''}
         </section>
         <table>
-          <thead><tr><th>Product</th><th>Qty</th><th>Subtotal</th></tr></thead>
+          <thead><tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
           <tbody><tr>
             <td class="product">
               <img src="${escapeHtml(bundleImage)}" alt="">
               <span>${escapeHtml(order.bundleName)}</span>
             </td>
             <td>${order.quantity}</td>
+            <td>৳${formatOrderUnitPrice(order)}</td>
             <td>৳${order.itemSubtotal.toLocaleString()}</td>
           </tr></tbody>
         </table>
         <section class="totals">
-          <div><span>Delivery</span><span>৳${order.deliveryCharge.toLocaleString()}</span></div>
+          <div><span>Delivery charge</span><span>৳${order.deliveryCharge.toLocaleString()}</span></div>
           <div><span>Discount</span><span>- ৳${order.discount.toLocaleString()}</span></div>
           ${order.couponCode ? `<div><span>Coupon</span><span>${escapeHtml(order.couponCode)}</span></div>` : ''}
           <div class="grand-total"><strong>Total</strong><strong>৳${order.totalAmount.toLocaleString()}</strong></div>
@@ -1341,8 +1348,17 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         />
                         <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
                       </div>
+                      <p className="text-stone-600">
+                        প্রতি পণ্যের মূল্য: ৳{formatOrderUnitPrice(order)} · পণ্যের মোট: ৳{order.itemSubtotal.toLocaleString('en-BD')}
+                      </p>
                       <p className="break-words text-stone-600">{order.customerAddress}</p>
-                      <p className="text-stone-500">{order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'} · {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}</p>
+                      <p className="text-stone-500">
+                        {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
+                        {' · ডেলিভারি চার্জ: '}
+                        {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('en-BD')}`}
+                        {' · '}
+                        {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}
+                      </p>
                       {order.bkashTxId && <p className="break-all text-stone-500">Trx: {order.bkashTxId}</p>}
                       {order.note && <p className="break-words text-amber-800">নোট: {order.note}</p>}
                       {order.courierTrackingCode && (
@@ -1490,7 +1506,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                               {order.customerAddress}
                             </div>
                             <span className="inline-block mt-1 text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded">
-                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে (৳৭০)' : 'ঢাকার বাইরে (৳১৩০)'}
+                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
+                              {' · ডেলিভারি চার্জ: '}
+                              {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('en-BD')}`}
                             </span>
                             {order.note && (
                               <p className="text-[10px] text-amber-800 italic mt-0.5">
@@ -1511,6 +1529,12 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                                 <span className="font-bold text-stone-900">{order.bundleName}</span>
                                 <span className="block text-[11px] text-stone-500">
                                   পরিমাণ: <strong>{order.quantity} টি</strong>
+                                </span>
+                                <span className="block text-[11px] text-stone-600">
+                                  প্রতি পণ্য: ৳{formatOrderUnitPrice(order)}
+                                </span>
+                                <span className="block text-[11px] text-stone-600">
+                                  পণ্যের মোট: ৳{order.itemSubtotal.toLocaleString('en-BD')}
                                 </span>
                               </div>
                             </div>
