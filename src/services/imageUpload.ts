@@ -13,6 +13,13 @@ const MAX_SLIDER_IMAGE_HEIGHT = 1080;
 const IMAGE_COMPRESSION_THRESHOLD_BYTES = 350 * 1024;
 const WEBP_QUALITIES = [0.84, 0.76, 0.68];
 
+export interface CatalogStorageImage {
+  path: string;
+  imageUrl: string;
+  size: number | null;
+  updatedAt: string | null;
+}
+
 async function optimizeCatalogImage(
   file: File,
   folder: 'products' | 'combos' | 'slider' | 'gallery',
@@ -184,6 +191,70 @@ export async function deleteCatalogImage(imageUrl: string): Promise<void> {
 
   const objectPath = decodeURIComponent(imageUrl.slice(markerIndex + marker.length));
   if (!objectPath) return;
-  const { error } = await getSupabaseClient().storage.from(IMAGE_BUCKET).remove([objectPath]);
-  if (error) throw new Error(`পুরোনো ছবি মুছে ফেলা যায়নি: ${error.message}`);
+  await deleteCatalogImages([objectPath]);
+}
+
+export async function listCatalogImages(): Promise<CatalogStorageImage[]> {
+  const bucket = getSupabaseClient().storage.from(IMAGE_BUCKET);
+  const pendingFolders = [''];
+  const images: CatalogStorageImage[] = [];
+  const pageSize = 1000;
+
+  while (pendingFolders.length > 0) {
+    const folder = pendingFolders.pop();
+    if (folder === undefined) break;
+
+    let offset = 0;
+    while (true) {
+      const { data, error } = await bucket.list(folder, {
+        limit: pageSize,
+        offset,
+        sortBy: { column: 'name', order: 'asc' },
+      });
+      if (error) throw new Error(`Storage-এর ছবি লোড করা যায়নি: ${error.message}`);
+
+      for (const entry of data) {
+        const path = folder ? `${folder}/${entry.name}` : entry.name;
+        if (entry.id === null) {
+          pendingFolders.push(path);
+          continue;
+        }
+
+        if (entry.metadata?.mimetype && !entry.metadata.mimetype.startsWith('image/')) continue;
+        images.push({
+          path,
+          imageUrl: bucket.getPublicUrl(path).data.publicUrl,
+          size: typeof entry.metadata?.size === 'number' ? entry.metadata.size : null,
+          updatedAt: entry.updated_at,
+        });
+      }
+
+      if (data.length < pageSize) break;
+      offset += pageSize;
+    }
+  }
+
+  return images.sort((left, right) => (
+    (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '')
+  ));
+}
+
+export async function deleteCatalogImages(objectPaths: string[]): Promise<void> {
+  const paths = [...new Set(objectPaths.filter(Boolean))];
+  if (paths.length === 0) return;
+
+  const bucket = getSupabaseClient().storage.from(IMAGE_BUCKET);
+  const batchSize = 100;
+  let deletedCount = 0;
+  for (let offset = 0; offset < paths.length; offset += batchSize) {
+    const batch = paths.slice(offset, offset + batchSize);
+    const { error } = await bucket.remove(batch);
+    if (error) {
+      const partialMessage = deletedCount > 0
+        ? `${deletedCount}টি ছবি মুছে গেছে, এরপর`
+        : 'ছবি মুছে ফেলা যায়নি:';
+      throw new Error(`${partialMessage} ${error.message}`);
+    }
+    deletedCount += batch.length;
+  }
 }

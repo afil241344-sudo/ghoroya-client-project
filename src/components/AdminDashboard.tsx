@@ -86,6 +86,9 @@ import {
   copyCatalogImageToFolder,
   copyCatalogImageToGallery,
   deleteCatalogImage,
+  deleteCatalogImages,
+  listCatalogImages,
+  CatalogStorageImage,
   uploadCatalogImage,
 } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
@@ -231,7 +234,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Tab State: orders, combos, products, coupons, slider, or settings
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'gallery' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'gallery' | 'images' | 'settings'>('orders');
   const [isStorefrontMenuOpen, setIsStorefrontMenuOpen] = useState(false);
   const storefrontMenuRef = useRef<HTMLDivElement>(null);
 
@@ -242,6 +245,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [coupons, setCoupons] = useState<DBCoupon[]>([]);
   const [sliderImages, setSliderImages] = useState<SliderImage[]>([]);
   const [homepageImageCards, setHomepageImageCards] = useState<HomepageImageCard[]>([]);
+  const [catalogImages, setCatalogImages] = useState<CatalogStorageImage[]>([]);
+  const [selectedCatalogImagePaths, setSelectedCatalogImagePaths] = useState<string[]>([]);
+  const [isLoadingCatalogImages, setIsLoadingCatalogImages] = useState(false);
+  const [isDeletingCatalogImages, setIsDeletingCatalogImages] = useState(false);
+  const [catalogImagesError, setCatalogImagesError] = useState<string | null>(null);
+  const [catalogImageCategory, setCatalogImageCategory] = useState('all');
+  const [catalogImageSearch, setCatalogImageSearch] = useState('');
+  const [catalogImagePage, setCatalogImagePage] = useState(1);
   const [deliverySettings, setDeliverySettings] = useState<StoreDeliverySettings | null>(null);
   const [isSavingCoupon, setIsSavingCoupon] = useState(false);
   const [isSavingDeliverySettings, setIsSavingDeliverySettings] = useState(false);
@@ -375,6 +386,107 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     .filter((option, index, options) => (
       options.findIndex((candidate) => candidate.imageUrl === option.imageUrl) === index
     ));
+
+  const imageReferences = [
+    ...productsList.flatMap((product) => product.imageUrl
+      ? [{ imageUrl: product.imageUrl, label: `প্রোডাক্ট · ${product.name}` }]
+      : []),
+    ...combos.flatMap((combo) => combo.imageUrl
+      ? [{ imageUrl: combo.imageUrl, label: `কম্বো · ${combo.name}` }]
+      : []),
+    ...sliderImages.map((slide) => ({
+      imageUrl: slide.imageUrl,
+      label: `স্লাইডার · ${slide.title}`,
+    })),
+    ...homepageImageCards.map((card) => ({
+      imageUrl: card.imageUrl,
+      label: `ছবি কার্ড · ${card.altText}`,
+    })),
+  ];
+  const imageUsageByUrl = new Map<string, string[]>();
+  imageReferences.forEach(({ imageUrl, label }) => {
+    imageUsageByUrl.set(imageUrl, [...(imageUsageByUrl.get(imageUrl) ?? []), label]);
+  });
+
+  const loadCatalogImages = async () => {
+    setIsLoadingCatalogImages(true);
+    setCatalogImagesError(null);
+    try {
+      setCatalogImages(await listCatalogImages());
+    } catch (error) {
+      console.error('Could not load catalog Storage images:', error);
+      setCatalogImagesError(error instanceof Error ? error.message : 'Storage-এর ছবি লোড করা যায়নি।');
+    } finally {
+      setIsLoadingCatalogImages(false);
+    }
+  };
+
+  const handleDeleteSelectedCatalogImages = async () => {
+    if (!canSafelyDeleteCatalogImages) {
+      showToast('সব product, combo ও storefront image data সফলভাবে load হওয়ার পর bulk delete করা যাবে।');
+      return;
+    }
+    const imagesToDelete = catalogImages.filter((image) => (
+      selectedCatalogImagePaths.includes(image.path) && !imageUsageByUrl.has(image.imageUrl)
+    ));
+    if (imagesToDelete.length === 0 || isDeletingCatalogImages) return;
+    if (!window.confirm(
+      `ব্যবহারে নেই এমন ${imagesToDelete.length}টি ছবি Storage থেকে স্থায়ীভাবে মুছে ফেলবেন? এই কাজ ফিরিয়ে আনা যাবে না।`,
+    )) return;
+
+    setIsDeletingCatalogImages(true);
+    try {
+      await deleteCatalogImages(imagesToDelete.map((image) => image.path));
+      const deletedPaths = new Set(imagesToDelete.map((image) => image.path));
+      setCatalogImages((current) => current.filter((image) => !deletedPaths.has(image.path)));
+      setSelectedCatalogImagePaths([]);
+      showToast(`${imagesToDelete.length}টি ছবি Storage থেকে মুছে ফেলা হয়েছে।`);
+    } catch (error) {
+      console.error('Could not delete selected catalog images:', error);
+      showToast(error instanceof Error ? error.message : 'নির্বাচিত ছবিগুলো মুছে ফেলা যায়নি।');
+      try {
+        setCatalogImages(await listCatalogImages());
+      } catch (refreshError) {
+        console.error('Could not refresh catalog images after deletion failure:', refreshError);
+        setCatalogImagesError(refreshError instanceof Error
+          ? refreshError.message
+          : 'Storage-এর ছবি রিফ্রেশ করা যায়নি।');
+      }
+    } finally {
+      setIsDeletingCatalogImages(false);
+    }
+  };
+
+  const filteredCatalogImages = catalogImages.filter((image) => {
+    const folder = image.path.split('/')[0];
+    const matchesCategory = catalogImageCategory === 'all'
+      || (catalogImageCategory === 'other'
+        ? !['products', 'combos', 'slider', 'gallery'].includes(folder)
+        : folder === catalogImageCategory);
+    return matchesCategory && image.path.toLowerCase().includes(catalogImageSearch.trim().toLowerCase());
+  });
+  const catalogImagePageSize = 24;
+  const catalogImagePageCount = Math.max(1, Math.ceil(filteredCatalogImages.length / catalogImagePageSize));
+  const visibleCatalogImages = filteredCatalogImages.slice(
+    (catalogImagePage - 1) * catalogImagePageSize,
+    catalogImagePage * catalogImagePageSize,
+  );
+  useEffect(() => {
+    setCatalogImagePage((page) => Math.min(page, catalogImagePageCount));
+  }, [catalogImagePageCount]);
+  const deletableVisibleCatalogImages = visibleCatalogImages.filter((image) => !imageUsageByUrl.has(image.imageUrl));
+  const allVisibleDeletableImagesSelected = deletableVisibleCatalogImages.length > 0
+    && deletableVisibleCatalogImages.every((image) => selectedCatalogImagePaths.includes(image.path));
+  const canSafelyDeleteCatalogImages = !isLoading && !isRefreshing && !catalogLoadError;
+
+  const toggleVisibleCatalogImageSelection = () => {
+    const visiblePaths = deletableVisibleCatalogImages.map((image) => image.path);
+    setSelectedCatalogImagePaths((selected) => (
+      allVisibleDeletableImagesSelected
+        ? selected.filter((path) => !visiblePaths.includes(path))
+        : [...new Set([...selected, ...visiblePaths])]
+    ));
+  };
 
   const loadData = async () => {
     setIsRefreshing(true);
@@ -1693,7 +1805,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
               aria-expanded={isStorefrontMenuOpen}
               aria-haspopup="menu"
               className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
-                activeTab === 'slider' || activeTab === 'gallery'
+                activeTab === 'slider' || activeTab === 'gallery' || activeTab === 'images'
                   ? 'border-emerald-700 text-emerald-800'
                   : 'border-transparent text-stone-500 hover:text-stone-800'
               }`}
@@ -1745,6 +1857,26 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                     ছবি কার্ড
                   </span>
                   <span className="text-[11px] text-stone-500">{homepageImageCards.length}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTab('images');
+                    setIsStorefrontMenuOpen(false);
+                    void loadCatalogImages();
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors ${
+                    activeTab === 'images'
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    সব ছবি
+                  </span>
+                  <span className="text-[11px] text-stone-500">{catalogImages.length}</span>
                 </button>
               </div>
             )}
@@ -3674,6 +3806,241 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 </div>
               )}
             </section>
+          </div>
+        )}
+
+        {activeTab === 'images' && (
+          <div className="min-w-0 space-y-5 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900">
+                  <ImageIcon className="h-5 w-5 text-emerald-700" />
+                  সব uploaded image
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  catalog Storage-এর ছবি দেখুন এবং কোনো জায়গায় ব্যবহৃত নয় এমন একাধিক ছবি একসাথে মুছুন।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void loadCatalogImages()}
+                disabled={isLoadingCatalogImages || isDeletingCatalogImages}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isLoadingCatalogImages ? 'animate-spin' : ''}`} />
+                রিফ্রেশ
+              </button>
+            </section>
+
+            <section className="space-y-3 rounded-xl border border-stone-200 p-3 sm:p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                <label className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+                  <input
+                    type="search"
+                    value={catalogImageSearch}
+                    onChange={(event) => {
+                      setCatalogImageSearch(event.target.value);
+                      setCatalogImagePage(1);
+                    }}
+                    placeholder="ফাইলের path দিয়ে খুঁজুন"
+                    className="w-full rounded-lg border border-stone-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-emerald-600"
+                    aria-label="ছবির path দিয়ে খুঁজুন"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-stone-600">
+                  <Filter className="h-4 w-4" />
+                  <span className="sr-only">ছবির ধরন</span>
+                  <select
+                    value={catalogImageCategory}
+                    onChange={(event) => {
+                      setCatalogImageCategory(event.target.value);
+                      setCatalogImagePage(1);
+                    }}
+                    className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 text-sm text-stone-800"
+                  >
+                    <option value="all">সব ফোল্ডার</option>
+                    <option value="products">প্রোডাক্ট</option>
+                    <option value="combos">কম্বো</option>
+                    <option value="slider">স্লাইডার</option>
+                    <option value="gallery">গ্যালারি</option>
+                    <option value="other">অন্যান্য</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="flex flex-col gap-2 border-t border-stone-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-stone-600">
+                  <span>{filteredCatalogImages.length}টি ছবি</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{selectedCatalogImagePaths.length}টি নির্বাচিত</span>
+                  <button
+                    type="button"
+                    onClick={toggleVisibleCatalogImageSelection}
+                    disabled={
+                      deletableVisibleCatalogImages.length === 0
+                      || isDeletingCatalogImages
+                      || !canSafelyDeleteCatalogImages
+                    }
+                    className="rounded-md px-2 py-1 font-semibold text-emerald-800 hover:bg-emerald-50 disabled:opacity-40"
+                  >
+                    {allVisibleDeletableImagesSelected ? 'এই পৃষ্ঠার নির্বাচন বাতিল' : 'এই পৃষ্ঠার unused ছবি নির্বাচন'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedCatalogImagePaths.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCatalogImagePaths([])}
+                      disabled={isDeletingCatalogImages}
+                      className="rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+                    >
+                      নির্বাচন বাতিল
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSelectedCatalogImages()}
+                    disabled={
+                      isDeletingCatalogImages
+                      || !canSafelyDeleteCatalogImages
+                      || selectedCatalogImagePaths.length === 0
+                      || !catalogImages.some((image) => (
+                        selectedCatalogImagePaths.includes(image.path) && !imageUsageByUrl.has(image.imageUrl)
+                      ))
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {isDeletingCatalogImages ? 'মুছে ফেলা হচ্ছে...' : 'নির্বাচিত ছবি মুছুন'}
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] leading-relaxed text-stone-500">
+                ব্যবহৃত ছবির পাশে কোন কোন জায়গায় লাগানো আছে দেখাবে; storefront-এর ছবি ভাঙা এড়াতে সেগুলো bulk delete করা যাবে না।
+                {` ${isLoading || isRefreshing ? 'Catalog data load চলাকালে bulk delete বন্ধ থাকবে।' : catalogLoadError ? 'Catalog data-তে সমস্যা থাকায় bulk delete বন্ধ আছে; আগে সব data রিফ্রেশ করুন।' : ''}`}
+              </p>
+            </section>
+
+            {catalogImagesError && (
+              <div role="alert" className="flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+                <span>{catalogImagesError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadCatalogImages()}
+                  disabled={isLoadingCatalogImages}
+                  className="rounded-lg border border-rose-300 bg-white px-3 py-2 text-xs font-bold hover:bg-rose-100 disabled:opacity-50"
+                >
+                  আবার চেষ্টা করুন
+                </button>
+              </div>
+            )}
+
+            {isLoadingCatalogImages ? (
+              <div className="rounded-xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">
+                Storage-এর ছবি লোড হচ্ছে...
+              </div>
+            ) : visibleCatalogImages.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-10 text-center">
+                <ImageIcon className="mx-auto h-8 w-8 text-stone-400" />
+                <p className="mt-2 text-sm font-bold text-stone-800">
+                  {catalogImages.length === 0 ? 'Storage-এ কোনো ছবি নেই' : 'এই filter-এ কোনো ছবি নেই'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                  {visibleCatalogImages.map((image) => {
+                    const usages = imageUsageByUrl.get(image.imageUrl) ?? [];
+                    const isSelected = selectedCatalogImagePaths.includes(image.path);
+                    const folder = image.path.split('/')[0];
+                    const fileSize = image.size === null
+                      ? 'সাইজ অজানা'
+                      : image.size >= 1024 * 1024
+                        ? `${(image.size / (1024 * 1024)).toFixed(1)} MB`
+                        : `${Math.max(1, Math.round(image.size / 1024))} KB`;
+                    return (
+                      <article
+                        key={image.path}
+                        className={`min-w-0 overflow-hidden rounded-xl border bg-white transition ${
+                          isSelected ? 'border-rose-400 ring-2 ring-rose-100' : 'border-stone-200'
+                        }`}
+                      >
+                        <div className="relative">
+                          <img
+                            src={image.imageUrl}
+                            alt={image.path.split('/').pop() ?? 'Catalog image'}
+                            loading="lazy"
+                            className="aspect-square w-full bg-stone-100 object-cover"
+                          />
+                          <label className={`absolute left-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg border shadow-sm ${
+                            usages.length > 0
+                              ? 'cursor-not-allowed border-stone-200 bg-white/90 text-stone-300'
+                              : 'cursor-pointer border-white bg-white/95 text-stone-700'
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={usages.length > 0 || isDeletingCatalogImages || !canSafelyDeleteCatalogImages}
+                              onChange={() => setSelectedCatalogImagePaths((selected) => (
+                                isSelected
+                                  ? selected.filter((path) => path !== image.path)
+                                  : [...selected, image.path]
+                              ))}
+                              aria-label={`${image.path} নির্বাচন করুন`}
+                              className="h-4 w-4 accent-rose-600 disabled:cursor-not-allowed"
+                            />
+                          </label>
+                          {usages.length > 0 && (
+                            <span className="absolute right-2 top-2 rounded-full bg-emerald-700 px-2 py-1 text-[9px] font-bold text-white">
+                              ব্যবহৃত
+                            </span>
+                          )}
+                        </div>
+                        <div className="space-y-1.5 p-2.5">
+                          <p className="truncate text-[10px] font-bold uppercase text-stone-500">{folder}</p>
+                          <p className="truncate text-[11px] font-semibold text-stone-800" title={image.path}>
+                            {image.path.split('/').pop()}
+                          </p>
+                          <p className="text-[10px] text-stone-500">
+                            {fileSize}
+                            {image.updatedAt ? ` · ${new Date(image.updatedAt).toLocaleDateString('en-GB')}` : ''}
+                          </p>
+                          {usages.length > 0 && (
+                            <p className="line-clamp-2 text-[10px] leading-relaxed text-emerald-800" title={usages.join(', ')}>
+                              {usages.join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </section>
+                {catalogImagePageCount > 1 && (
+                  <div className="flex items-center justify-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setCatalogImagePage((page) => Math.max(1, page - 1))}
+                      disabled={catalogImagePage === 1}
+                      className="rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                    >
+                      আগের
+                    </button>
+                    <span className="text-xs text-stone-600">
+                      পৃষ্ঠা {catalogImagePage} / {catalogImagePageCount}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogImagePage((page) => Math.min(catalogImagePageCount, page + 1))}
+                      disabled={catalogImagePage === catalogImagePageCount}
+                      className="rounded-lg border border-stone-300 px-3 py-2 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                    >
+                      পরের
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
