@@ -14,7 +14,7 @@ interface ImageInfo {
   error?: string;
 }
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const MIN_WIDTH = 1280;
 const MIN_HEIGHT = 720;
 const EXPECTED_RATIO = 16 / 9;
@@ -44,7 +44,7 @@ export default function SliderImageUploadField({
       .then(({ width, height }) => {
         const ratio = width / height;
         const error = selectedFile.size > MAX_FILE_SIZE
-          ? 'ফাইল ৫ MB-এর বেশি।'
+          ? 'Upload-এর আগে ফাইল ১৫ MB-এর বেশি।'
           : width < MIN_WIDTH || height < MIN_HEIGHT
             ? `Resolution কম। অন্তত ${MIN_WIDTH} × ${MIN_HEIGHT} px লাগবে।`
             : Math.abs(ratio - EXPECTED_RATIO) > RATIO_TOLERANCE
@@ -62,7 +62,7 @@ export default function SliderImageUploadField({
             width: 0,
             height: 0,
             size: selectedFile.size,
-            error: selectedFile.size > MAX_FILE_SIZE ? 'ফাইল ৫ MB-এর বেশি।' : message,
+            error: selectedFile.size > MAX_FILE_SIZE ? 'Upload-এর আগে ফাইল ১৫ MB-এর বেশি।' : message,
           });
           onFileChange(selectedFile, false);
         }
@@ -93,12 +93,21 @@ export default function SliderImageUploadField({
       return;
     }
 
+    if (file.size > MAX_FILE_SIZE) {
+      setSelectedFile(null);
+      setImageInfo({
+        width: 0,
+        height: 0,
+        size: file.size,
+        error: 'Upload-এর আগে ফাইল ১৫ MB-এর বেশি।',
+      });
+      onFileChange(file, false);
+      return;
+    }
+
     setSelectedFile(file);
     setImageInfo(null);
     onFileChange(file, false);
-    if (file.size > MAX_FILE_SIZE) {
-      setImageInfo({ width: 0, height: 0, size: file.size, error: 'ফাইল ৫ MB-এর বেশি।' });
-    }
   };
 
   return (
@@ -116,7 +125,7 @@ export default function SliderImageUploadField({
           />
           <div className="mt-2 space-y-1 text-[11px] text-stone-600">
             <p className="font-semibold">Recommended: 1920 × 1080 px (16:9)</p>
-            <p>Minimum: 1280 × 720 px · Maximum file size: 5 MB</p>
+            <p>Minimum: 1280 × 720 px · Upload limit: 15 MB · Storage limit after optimization: 5 MB</p>
             {isChecking && <p>ছবির dimension যাচাই হচ্ছে...</p>}
             {imageInfo && (
               <p>
@@ -126,7 +135,9 @@ export default function SliderImageUploadField({
             )}
             {imageInfo?.error && <p role="alert" className="font-semibold text-rose-700">{imageInfo.error}</p>}
             {imageInfo && !imageInfo.error && (
-              <p className="font-semibold text-emerald-700">Image size and ratio are valid.</p>
+              <p className="font-semibold text-emerald-700">
+                Image size and ratio are valid. Large images are optimized to WebP (max 1920 × 1080).
+              </p>
             )}
           </div>
         </div>

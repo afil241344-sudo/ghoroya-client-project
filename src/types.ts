@@ -15,7 +15,7 @@ export interface ShemaiBundle {
   inStock?: boolean;
   stockCount?: number;
   includedProductIds?: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
 }
 
 export type ShemaiCombo = ShemaiBundle;
@@ -31,7 +31,7 @@ export interface ProductItem {
   stockQuantity: number;
   inStock: boolean;
   description: string;
-  imageUrl?: string;
+  imageUrl?: string | null;
   createdAt?: string;
 }
 

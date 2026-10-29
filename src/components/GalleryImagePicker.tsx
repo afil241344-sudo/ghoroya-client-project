@@ -16,13 +16,16 @@ interface GalleryImagePickerProps {
   existingImages: GalleryImageOption[];
   selectedFiles: File[];
   selectedImageUrls: string[];
-  currentImageUrl?: string;
+  currentImageUrl?: string | null;
+  currentImageRemoved?: boolean;
+  onRemoveCurrentImage?: () => void;
+  onRestoreCurrentImage?: () => void;
   multipleSelection?: boolean;
   onFilesChange: (files: File[]) => void;
   onImageUrlsChange: (imageUrls: string[]) => void;
 }
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 const MIN_IMAGE_DIMENSION = 600;
 const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
 
@@ -32,6 +35,9 @@ export default function GalleryImagePicker({
   selectedFiles,
   selectedImageUrls,
   currentImageUrl,
+  currentImageRemoved = false,
+  onRemoveCurrentImage,
+  onRestoreCurrentImage,
   multipleSelection = true,
   onFilesChange,
   onImageUrlsChange,
@@ -83,7 +89,7 @@ export default function GalleryImagePicker({
         continue;
       }
       if (file.size > MAX_FILE_SIZE) {
-        errors.push(`${file.name}: ছবির সাইজ ৫ MB-এর বেশি।`);
+        errors.push(`${file.name}: upload-এর আগে ছবির সাইজ ১৫ MB-এর বেশি।`);
         continue;
       }
       if ([...selectedFiles, ...addedFiles].some((selected) => (
@@ -183,21 +189,48 @@ export default function GalleryImagePicker({
             </button>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500">
               <span>Recommended: 1200 × 1200 px · Minimum: 600 × 600 px</span>
-              <span>সর্বোচ্চ 5 MB · {selectedFiles.length + selectedImageUrls.length}/{availableSlots} নির্বাচিত</span>
+              <span>Upload: সর্বোচ্চ 15 MB · storage-এ সর্বোচ্চ 5 MB</span>
             </div>
-            <p className="mt-1 text-[11px] text-stone-500">ছবির display অনুযায়ী rectangle ছবির কিছু অংশ crop হতে পারে।</p>
-            {filePreviews.length === 0 && (selectedImageUrls[0] || currentImageUrl) && (
+            <p className="mt-1 text-[11px] text-stone-500">
+              বড় still image প্রয়োজনমতো WebP-তে optimize ও 1600 px পর্যন্ত resize হবে; GIF animation অপরিবর্তিত থাকবে।
+            </p>
+            <p className="text-[11px] text-stone-500">Gallery card square দেখাবে; rectangle ছবি মাঝখান থেকে crop হতে পারে।</p>
+            {filePreviews.length === 0 && (selectedImageUrls[0] || (!currentImageRemoved && currentImageUrl)) && (
               <div className="mt-4 flex items-center gap-3 rounded-xl border border-stone-200 p-2.5">
                 <img
-                  src={selectedImageUrls[0] || currentImageUrl}
+                  src={selectedImageUrls[0] || currentImageUrl || ''}
                   alt="নির্বাচিত ছবির প্রিভিউ"
                   className="h-16 w-16 rounded-lg bg-stone-100 object-cover"
                 />
-                <span className="truncate text-xs font-medium text-stone-600">
-                  {selectedImageUrls[0]
-                    ? existingImages.find((image) => image.imageUrl === selectedImageUrls[0])?.label ?? 'নির্বাচিত ছবি'
-                    : 'বর্তমান ছবি'}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-stone-600">
+                    {selectedImageUrls[0]
+                      ? existingImages.find((image) => image.imageUrl === selectedImageUrls[0])?.label ?? 'নির্বাচিত ছবি'
+                      : 'বর্তমান ছবি'}
+                  </span>
+                  {currentImageUrl && onRemoveCurrentImage && !selectedImageUrls[0] && (
+                    <button
+                      type="button"
+                      onClick={onRemoveCurrentImage}
+                      className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-rose-700 hover:text-rose-800"
+                    >
+                      <X className="h-3 w-3" />
+                      ছবি সরান
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {currentImageRemoved && currentImageUrl && onRestoreCurrentImage && !selectedImageUrls[0] && (
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                <span className="text-xs font-medium text-rose-800">সেভ করলে বর্তমান ছবিটি মুছে যাবে।</span>
+                <button
+                  type="button"
+                  onClick={onRestoreCurrentImage}
+                  className="shrink-0 text-xs font-bold text-rose-800 underline"
+                >
+                  ফিরিয়ে আনুন
+                </button>
               </div>
             )}
             {filePreviews.length > 0 && (

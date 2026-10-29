@@ -285,10 +285,12 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [comboImageFile, setComboImageFile] = useState<File | null>(null);
   const [comboSelectedImageUrl, setComboSelectedImageUrl] = useState<string | null>(null);
+  const [comboImageRemoved, setComboImageRemoved] = useState(false);
   const [newProductImageFile, setNewProductImageFile] = useState<File | null>(null);
   const [newProductSelectedImageUrl, setNewProductSelectedImageUrl] = useState<string | null>(null);
   const [editingProductImageFile, setEditingProductImageFile] = useState<File | null>(null);
   const [editingProductSelectedImageUrl, setEditingProductSelectedImageUrl] = useState<string | null>(null);
+  const [editingProductImageRemoved, setEditingProductImageRemoved] = useState(false);
   const [isSavingCatalogItem, setIsSavingCatalogItem] = useState(false);
   const [newProductForm, setNewProductForm] = useState<Omit<ProductItem, 'id'>>({
     name: '',
@@ -540,6 +542,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const openNewComboForm = () => {
     setComboImageFile(null);
     setComboSelectedImageUrl(null);
+    setComboImageRemoved(false);
     setIsCreatingCombo(true);
     setEditingCombo({
       id: crypto.randomUUID(),
@@ -594,7 +597,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
         salePrice: Number(editingCombo.salePrice),
         savings: Math.max(0, Number(editingCombo.originalPrice) - Number(editingCombo.salePrice)),
         stockCount: Number(editingCombo.stockCount),
-        imageUrl: uploadedImageUrl ?? editingCombo.imageUrl,
+        imageUrl: uploadedImageUrl ?? (comboImageRemoved ? null : editingCombo.imageUrl),
       };
 
       if (isCreatingCombo) {
@@ -610,7 +613,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setIsCreatingCombo(false);
       setComboImageFile(null);
       setComboSelectedImageUrl(null);
-      if (uploadedImageUrl && previousImageUrl && previousImageUrl !== uploadedImageUrl) {
+      setComboImageRemoved(false);
+      if ((uploadedImageUrl || comboImageRemoved) && previousImageUrl && previousImageUrl !== combo.imageUrl) {
         try {
           await deleteCatalogImage(previousImageUrl);
         } catch (cleanupError) {
@@ -659,15 +663,19 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       return;
     }
 
+    let uploadedImageUrl: string | null = null;
     try {
       setIsSavingCatalogItem(true);
       const newImageId = `prod-${Date.now()}`;
-      const imageUrl = newProductImageFile
+      uploadedImageUrl = newProductImageFile
         ? await uploadCatalogImage(newProductImageFile, 'products', newImageId)
         : newProductSelectedImageUrl
           ? await copyCatalogImageToFolder(newProductSelectedImageUrl, 'products', newImageId)
-          : undefined;
-      const created = await createProductItem({ ...newProductForm, imageUrl });
+          : null;
+      const created = await createProductItem({
+        ...newProductForm,
+        imageUrl: uploadedImageUrl,
+      });
       setProductsList((prev) => [created, ...prev]);
       setIsAddingProduct(false);
       setNewProductImageFile(null);
@@ -685,6 +693,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       });
       showToast(`নতুন প্রোডাক্ট '${created.name}' ডাটাবেসে যোগ হয়েছে!`);
     } catch (err) {
+      if (uploadedImageUrl) {
+        try {
+          await deleteCatalogImage(uploadedImageUrl);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused product image:', cleanupError);
+        }
+      }
       console.error('Error creating product:', err);
       showToast(err instanceof Error ? err.message : 'প্রোডাক্ট তৈরি করতে সমস্যা হয়েছে');
     } finally {
@@ -697,8 +712,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     if (!editingProduct) return;
 
     setIsSavingCatalogItem(true);
+    let uploadedImageUrl: string | null = null;
+    const previousImageUrl = editingProduct.imageUrl;
     try {
-      const imageUrl = editingProductImageFile
+      uploadedImageUrl = editingProductImageFile
         ? await uploadCatalogImage(editingProductImageFile, 'products', editingProduct.id)
         : editingProductSelectedImageUrl
           ? await copyCatalogImageToFolder(
@@ -706,7 +723,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             'products',
             editingProduct.id,
           )
-          : editingProduct.imageUrl;
+          : null;
+      const imageUrl = uploadedImageUrl
+        ?? (editingProductImageRemoved ? null : editingProduct.imageUrl ?? null);
       const updatedProduct = { ...editingProduct, imageUrl };
       await updateProductItem(editingProduct.id, {
         name: editingProduct.name,
@@ -727,8 +746,24 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setEditingProduct(null);
       setEditingProductImageFile(null);
       setEditingProductSelectedImageUrl(null);
+      setEditingProductImageRemoved(false);
       showToast(`প্রোডাক্ট '${editingProduct.name}' ডাটাবেসে সফলভাবে আপডেট হয়েছে!`);
+      if ((uploadedImageUrl || editingProductImageRemoved) && previousImageUrl && previousImageUrl !== imageUrl) {
+        try {
+          await deleteCatalogImage(previousImageUrl);
+        } catch (cleanupError) {
+          console.error('Product saved but its previous image could not be removed:', cleanupError);
+          showToast('প্রোডাক্ট সেভ হয়েছে, তবে পুরোনো image Storage থেকে মুছতে পারেনি।');
+        }
+      }
     } catch (err) {
+      if (uploadedImageUrl) {
+        try {
+          await deleteCatalogImage(uploadedImageUrl);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused product image:', cleanupError);
+        }
+      }
       console.error('Error saving product image or details:', err);
       showToast(err instanceof Error ? err.message : 'প্রোডাক্ট আপডেট করতে সমস্যা হয়েছে');
     } finally {
@@ -737,10 +772,22 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteProduct = async (productId: string, productName: string) => {
+    const product = productsList.find((item) => item.id === productId);
     if (window.confirm(`আপনি কি নিশ্চিত যে '${productName}' প্রোডাক্টটি মুছে ফেলতে চান?`)) {
-      await deleteProductItem(productId);
-      setProductsList((prev) => prev.filter((p) => p.id !== productId));
-      showToast(`প্রোডাক্ট '${productName}' মুছে ফেলা হয়েছে!`);
+      try {
+        await deleteProductItem(productId);
+        setProductsList((prev) => prev.filter((p) => p.id !== productId));
+        try {
+          if (product?.imageUrl) await deleteCatalogImage(product.imageUrl);
+          showToast(`প্রোডাক্ট '${productName}' মুছে ফেলা হয়েছে!`);
+        } catch (cleanupError) {
+          console.error('Product deleted but its Storage image could not be removed:', cleanupError);
+          showToast('প্রোডাক্ট মুছে গেছে, তবে Storage থেকে image মুছতে পারেনি।');
+        }
+      } catch (error) {
+        console.error('Could not delete product:', error);
+        showToast(error instanceof Error ? error.message : 'প্রোডাক্ট মুছে ফেলা যায়নি।');
+      }
     }
   };
 
@@ -2525,6 +2572,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         onClick={() => {
                           setComboImageFile(null);
                           setComboSelectedImageUrl(null);
+                          setComboImageRemoved(false);
                           setIsCreatingCombo(false);
                           setEditingCombo({ ...combo });
                         }}
@@ -2570,14 +2618,23 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       selectedFiles={comboImageFile ? [comboImageFile] : []}
                       selectedImageUrls={comboSelectedImageUrl ? [comboSelectedImageUrl] : []}
                       currentImageUrl={editingCombo.imageUrl}
+                      currentImageRemoved={comboImageRemoved}
+                      onRemoveCurrentImage={() => setComboImageRemoved(true)}
+                      onRestoreCurrentImage={() => setComboImageRemoved(false)}
                       multipleSelection={false}
                       onFilesChange={(files) => {
                         setComboImageFile(files[0] ?? null);
-                        if (files.length) setComboSelectedImageUrl(null);
+                        if (files.length) {
+                          setComboSelectedImageUrl(null);
+                          setComboImageRemoved(false);
+                        }
                       }}
                       onImageUrlsChange={(urls) => {
                         setComboSelectedImageUrl(urls[0] ?? null);
-                        if (urls.length) setComboImageFile(null);
+                        if (urls.length) {
+                          setComboImageFile(null);
+                          setComboImageRemoved(false);
+                        }
                       }}
                     />
                     <label className="block text-xs font-bold text-stone-700">
@@ -2903,6 +2960,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         onClick={() => {
                           setEditingProductImageFile(null);
                           setEditingProductSelectedImageUrl(null);
+                          setEditingProductImageRemoved(false);
                           setEditingProduct({ ...product });
                         }}
                         className="rounded-lg p-2 text-stone-600 hover:bg-white"
@@ -3044,6 +3102,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                             onClick={() => {
                               setEditingProductImageFile(null);
                               setEditingProductSelectedImageUrl(null);
+                              setEditingProductImageRemoved(false);
                               setEditingProduct({ ...prod });
                             }}
                             className="inline-flex p-1.5 text-stone-600 hover:text-emerald-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
@@ -3303,14 +3362,23 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       selectedFiles={editingProductImageFile ? [editingProductImageFile] : []}
                       selectedImageUrls={editingProductSelectedImageUrl ? [editingProductSelectedImageUrl] : []}
                       currentImageUrl={editingProduct.imageUrl}
+                      currentImageRemoved={editingProductImageRemoved}
+                      onRemoveCurrentImage={() => setEditingProductImageRemoved(true)}
+                      onRestoreCurrentImage={() => setEditingProductImageRemoved(false)}
                       multipleSelection={false}
                       onFilesChange={(files) => {
                         setEditingProductImageFile(files[0] ?? null);
-                        if (files.length) setEditingProductSelectedImageUrl(null);
+                        if (files.length) {
+                          setEditingProductSelectedImageUrl(null);
+                          setEditingProductImageRemoved(false);
+                        }
                       }}
                       onImageUrlsChange={(urls) => {
                         setEditingProductSelectedImageUrl(urls[0] ?? null);
-                        if (urls.length) setEditingProductImageFile(null);
+                        if (urls.length) {
+                          setEditingProductImageFile(null);
+                          setEditingProductImageRemoved(false);
+                        }
                       }}
                     />
                     <div>

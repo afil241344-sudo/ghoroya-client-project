@@ -1,11 +1,66 @@
 import { getSupabaseClient } from '../lib/supabase';
 
+const MAX_SOURCE_IMAGE_SIZE_BYTES = 15 * 1024 * 1024;
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const IMAGE_BUCKET = 'catalog';
 const SLIDER_MIN_WIDTH = 1280;
 const SLIDER_MIN_HEIGHT = 720;
 const SLIDER_ASPECT_RATIO = 16 / 9;
 const SLIDER_ASPECT_TOLERANCE = 0.015;
+const MAX_CATALOG_IMAGE_DIMENSION = 1600;
+const MAX_SLIDER_IMAGE_WIDTH = 1920;
+const MAX_SLIDER_IMAGE_HEIGHT = 1080;
+const IMAGE_COMPRESSION_THRESHOLD_BYTES = 350 * 1024;
+const WEBP_QUALITIES = [0.84, 0.76, 0.68];
+
+async function optimizeCatalogImage(
+  file: File,
+  folder: 'products' | 'combos' | 'slider' | 'gallery',
+): Promise<File> {
+  if (file.type === 'image/gif') return file;
+
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  try {
+    const maxWidth = folder === 'slider' ? MAX_SLIDER_IMAGE_WIDTH : MAX_CATALOG_IMAGE_DIMENSION;
+    const maxHeight = folder === 'slider' ? MAX_SLIDER_IMAGE_HEIGHT : MAX_CATALOG_IMAGE_DIMENSION;
+    const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const needsResize = width !== bitmap.width || height !== bitmap.height;
+
+    if (!needsResize && file.size <= IMAGE_COMPRESSION_THRESHOLD_BYTES) return file;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('ছবি optimize করার জন্য browser canvas পাওয়া যায়নি।');
+    context.drawImage(bitmap, 0, 0, width, height);
+
+    let optimizedBlob: Blob | null = null;
+    for (const quality of WEBP_QUALITIES) {
+      optimizedBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/webp', quality);
+      });
+      if (!optimizedBlob) throw new Error('WebP image তৈরি করা যায়নি।');
+      if (optimizedBlob.size <= MAX_IMAGE_SIZE_BYTES) break;
+    }
+
+    if (!optimizedBlob) throw new Error('ছবি optimize করা যায়নি।');
+    if (!needsResize && optimizedBlob.size >= file.size) return file;
+    if (optimizedBlob.size > MAX_IMAGE_SIZE_BYTES) {
+      throw new Error('ছবিটি optimize করার পরও ৫ MB-এর বেশি। ছোট image upload করুন।');
+    }
+
+    const optimizedName = `${file.name.replace(/\.[^.]+$/, '') || 'image'}.webp`;
+    return new File([optimizedBlob], optimizedName, {
+      type: 'image/webp',
+      lastModified: file.lastModified,
+    });
+  } finally {
+    bitmap.close();
+  }
+}
 
 export async function uploadCatalogImage(
   file: File,
@@ -31,8 +86,8 @@ export async function uploadCatalogImage(
       ? 'Slider-এর জন্য JPEG, PNG, WebP অথবা AVIF ছবি নির্বাচন করুন।'
       : 'JPEG, PNG, WebP, GIF বা AVIF ছবির ফাইল নির্বাচন করুন।');
   }
-  if (file.size > MAX_IMAGE_SIZE_BYTES) {
-    throw new Error('ছবির সাইজ ৫ MB-এর মধ্যে হতে হবে।');
+  if (file.size > MAX_SOURCE_IMAGE_SIZE_BYTES) {
+    throw new Error('Upload-এর আগে ছবির সাইজ ১৫ MB-এর মধ্যে হতে হবে।');
   }
   if (folder === 'slider') {
     const { width, height } = await readImageDimensions(file);
@@ -44,12 +99,18 @@ export async function uploadCatalogImage(
     }
   }
 
-  const fileExtension = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'image';
+  const optimizedFile = await optimizeCatalogImage(file, folder);
+  if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error(file.type === 'image/gif'
+      ? 'GIF animation অক্ষত রাখতে compress করা হয়নি; GIF ফাইল ৫ MB-এর মধ্যে দিন।'
+      : 'ছবির সাইজ optimize করার পরও ৫ MB-এর বেশি।');
+  }
+  const fileExtension = optimizedFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'image';
   const filePath = `${folder}/${itemId}/${Date.now()}.${fileExtension}`;
   const supabase = getSupabaseClient();
   const { error } = await supabase.storage
     .from(IMAGE_BUCKET)
-    .upload(filePath, file, { upsert: true, contentType: file.type });
+    .upload(filePath, optimizedFile, { upsert: true, contentType: optimizedFile.type });
 
   if (error) {
     throw new Error(`ছবি আপলোড করা যায়নি: ${error.message}`);
