@@ -27,6 +27,11 @@ import {
   AlertCircle,
   Check,
   Printer,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
 import {
@@ -62,6 +67,19 @@ const ORDER_STATUS_LABELS: Record<BackendOrder['status'], string> = {
   delivered: 'Delivered',
   cancelled: 'Cancelled',
 };
+
+type OrderDateRange = 'today' | 'this-week' | 'this-month' | 'all' | 'custom';
+
+function isOrderDateRange(value: string): value is OrderDateRange {
+  return ['today', 'this-week', 'this-month', 'all', 'custom'].includes(value);
+}
+
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -178,6 +196,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   // Filters & Search for orders
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<OrderDateRange>('all');
+  const [customStartDate, setCustomStartDate] = useState(() => getLocalDateKey(new Date()));
+  const [customEndDate, setCustomEndDate] = useState(() => getLocalDateKey(new Date()));
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modals & Edit states
   const [editingCombo, setEditingCombo] = useState<BackendCombo | null>(null);
@@ -475,9 +498,62 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
   };
 
+  const today = new Date();
+  const todayKey = getLocalDateKey(today);
+  const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const monthStartKey = getLocalDateKey(new Date(today.getFullYear(), today.getMonth(), 1));
+  const rangeStartKey =
+    dateRange === 'today'
+      ? todayKey
+      : dateRange === 'this-week'
+        ? getLocalDateKey(weekStart)
+        : dateRange === 'this-month'
+          ? monthStartKey
+          : dateRange === 'custom'
+            ? customStartDate
+            : '';
+  const rangeEndKey =
+    dateRange === 'today' || dateRange === 'this-week' || dateRange === 'this-month'
+      ? todayKey
+      : dateRange === 'custom'
+        ? customEndDate
+        : '';
+  const invalidCustomRange =
+    dateRange === 'custom' && Boolean(rangeStartKey && rangeEndKey && rangeStartKey > rangeEndKey);
+  const dateFilteredOrders = orders.filter((order) => {
+    if (dateRange === 'all') return true;
+    if (invalidCustomRange) return false;
+    const orderDateKey = getLocalDateKey(new Date(order.createdAt));
+    return orderDateKey >= rangeStartKey && orderDateKey <= rangeEndKey;
+  });
+  const filteredOrders = dateFilteredOrders.filter((order) => {
+    const matchesSearch =
+      order.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.customerPhone.includes(searchQuery);
+    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+  const pageCount = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const displayedPage = Math.min(currentPage, pageCount);
+  const pageStartIndex = (displayedPage - 1) * pageSize;
+  const paginatedOrders = filteredOrders.slice(pageStartIndex, pageStartIndex + pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, dateRange, customStartDate, customEndDate, pageSize]);
+
+  useEffect(() => {
+    if (currentPage > pageCount) setCurrentPage(pageCount);
+  }, [currentPage, pageCount]);
+
   // Export orders to CSV
   const exportToCsv = () => {
-    if (orders.length === 0) return;
+    if (filteredOrders.length === 0) {
+      showToast('এই filter-এ export করার মতো কোনো order নেই।');
+      return;
+    }
 
     const headers = [
       'Order ID',
@@ -496,7 +572,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       'Tracking Code',
     ];
 
-    const rows = orders.map((o) => [
+    const rows = filteredOrders.map((o) => [
       o.orderId,
       new Date(o.createdAt).toLocaleDateString(),
       `"${o.customerName.replace(/"/g, '""')}"`,
@@ -520,30 +596,20 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `lachcha_shemai_orders_${new Date().toISOString().split('T')[0]}.csv`);
+    const exportRange = dateRange === 'custom'
+      ? `${customStartDate}_to_${customEndDate}`
+      : dateRange;
+    link.setAttribute('download', `lachcha_shemai_orders_${exportRange}_${todayKey}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     showToast('অর্ডার লিস্ট CSV ফাইলে ডাউনলোড হয়েছে!');
   };
 
-  // Filtered orders
-  const filteredOrders = orders.filter((order) => {
-    const matchesSearch =
-      order.orderId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customerPhone.includes(searchQuery);
-
-    const matchesStatus =
-      statusFilter === 'all' ? true : order.status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
-
   const selectedOrders = orders.filter((order) => selectedOrderIds.includes(order.orderId));
   const allVisibleOrdersSelected =
-    filteredOrders.length > 0 &&
-    filteredOrders.every((order) => selectedOrderIds.includes(order.orderId));
+    paginatedOrders.length > 0 &&
+    paginatedOrders.every((order) => selectedOrderIds.includes(order.orderId));
 
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrderIds((selected) =>
@@ -554,7 +620,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const toggleVisibleOrderSelection = () => {
-    const visibleIds = filteredOrders.map((order) => order.orderId);
+    const visibleIds = paginatedOrders.map((order) => order.orderId);
     setSelectedOrderIds((selected) => {
       if (visibleIds.every((id) => selected.includes(id))) {
         return selected.filter((id) => !visibleIds.includes(id));
@@ -663,10 +729,10 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   // Calculate metrics
-  const totalRevenue = orders.reduce((sum, o) => (o.status !== 'cancelled' ? sum + o.totalAmount : sum), 0);
-  const pendingOrdersCount = orders.filter((o) => o.status === 'pending').length;
-  const processingCount = orders.filter((o) => o.status === 'processing').length;
-  const deliveredCount = orders.filter((o) => o.status === 'delivered').length;
+  const totalRevenue = dateFilteredOrders.reduce(
+    (sum, order) => (order.status !== 'cancelled' ? sum + order.totalAmount : sum),
+    0,
+  );
 
   // Supabase Auth Gate - Standalone Page
   if (!isAuthenticated) {
@@ -836,10 +902,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">মোট বিক্রয় (আয়)</span>
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">Total revenue</span>
               <div className="mt-1 break-all text-lg font-black text-emerald-800 sm:text-2xl">
                 ৳{totalRevenue.toLocaleString()}
               </div>
+              <span className="mt-1 block text-[10px] text-stone-500">
+                {dateFilteredOrders.length} orders in selected period
+              </span>
             </div>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 sm:h-10 sm:w-10">
               <TrendingUp className="w-5 h-5" />
@@ -848,9 +917,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
           <div className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white p-3 shadow-xs sm:p-4">
             <div>
-              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">মোট অর্ডার</span>
+              <span className="text-[11px] font-semibold text-stone-500 sm:text-xs">Orders in period</span>
               <div className="mt-1 text-lg font-black text-stone-900 sm:text-2xl">
-                {orders.length} টি
+                {dateFilteredOrders.length}
               </div>
             </div>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 sm:h-10 sm:w-10">
@@ -895,7 +964,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             }`}
           >
             <ShoppingBag className="w-4 h-4" />
-            <span className="truncate sm:whitespace-nowrap">অর্ডার ({orders.length})</span>
+            <span className="truncate sm:whitespace-nowrap">অর্ডার ({dateFilteredOrders.length})</span>
           </button>
 
           {/* Tab 2: Combos Table (Converted from previous products bundle table) */}
@@ -934,6 +1003,87 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
         {/* TAB 1: ORDERS MANAGEMENT */}
         {activeTab === 'orders' && (
           <div className="min-w-0 space-y-4 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="rounded-xl border border-stone-200 bg-stone-50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-bold text-stone-800">
+                    <CalendarDays className="h-4 w-4 text-emerald-700" />
+                    <label htmlFor="order-date-range">Order date range</label>
+                  </div>
+                  <p className="mt-1 text-xs text-stone-500">
+                    View and export orders by the date they were placed.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <select
+                    id="order-date-range"
+                    value={dateRange}
+                    onChange={(event) => {
+                      if (isOrderDateRange(event.target.value)) {
+                        setDateRange(event.target.value);
+                      }
+                      setSelectedOrderIds([]);
+                    }}
+                    className="min-h-10 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-800 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20"
+                  >
+                    <option value="today">Today</option>
+                    <option value="this-week">This week</option>
+                    <option value="this-month">This month</option>
+                    <option value="all">All time</option>
+                    <option value="custom">Custom date range</option>
+                  </select>
+                  {dateRange === 'custom' && (
+                    <>
+                      <label className="flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-600">
+                        From
+                        <input
+                          type="date"
+                          value={customStartDate}
+                          max={customEndDate}
+                          onChange={(event) => {
+                            setCustomStartDate(event.target.value);
+                            setSelectedOrderIds([]);
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 outline-none"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-2 text-xs font-semibold text-stone-600">
+                        To
+                        <input
+                          type="date"
+                          value={customEndDate}
+                          min={customStartDate}
+                          onChange={(event) => {
+                            setCustomEndDate(event.target.value);
+                            setSelectedOrderIds([]);
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-sm text-stone-800 outline-none"
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-stone-200 pt-3">
+                <span className="text-xs font-semibold text-stone-600">
+                  {dateFilteredOrders.length} orders
+                  {dateRange === 'today' && ' today'}
+                  {dateRange === 'this-week' && ' this week'}
+                  {dateRange === 'this-month' && ' this month'}
+                  {dateRange === 'all' && ' across all dates'}
+                  {dateRange === 'custom' && ` from ${customStartDate} to ${customEndDate}`}
+                </span>
+                <span className="text-xs text-stone-500">
+                  Showing {filteredOrders.length} after search and status filters
+                </span>
+              </div>
+              {invalidCustomRange && (
+                <p className="mt-2 text-xs font-semibold text-rose-700">
+                  Start date must be on or before the end date.
+                </p>
+              )}
+            </section>
+
             {/* Search & Status Filters */}
             <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
               {/* Search Box */}
@@ -981,11 +1131,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   type="checkbox"
                   checked={allVisibleOrdersSelected}
                   onChange={toggleVisibleOrderSelection}
-                  disabled={filteredOrders.length === 0 || isPrintingOrders}
+                  disabled={paginatedOrders.length === 0 || isPrintingOrders}
                   className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
-                  aria-label="Select all visible orders"
+                  aria-label="Select all orders on this page"
                 />
-                Select all visible orders
+                Select this page
               </label>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-stone-600">
@@ -1019,7 +1169,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 <div className="rounded-xl border border-stone-200 py-8 text-center text-sm text-stone-500">
                   কোনো অর্ডার পাওয়া যায়নি।
                 </div>
-              ) : filteredOrders.map((order) => {
+              ) : paginatedOrders.map((order) => {
                 const bundleImage = getBundleImage(
                   combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
                 );
@@ -1142,9 +1292,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         type="checkbox"
                         checked={allVisibleOrdersSelected}
                         onChange={toggleVisibleOrderSelection}
-                        disabled={filteredOrders.length === 0 || isPrintingOrders}
+                        disabled={paginatedOrders.length === 0 || isPrintingOrders}
                         className="h-4 w-4 rounded border-stone-300 accent-emerald-700"
-                        aria-label="Select all visible orders"
+                        aria-label="Select all orders on this page"
                       />
                     </th>
                     <th className="py-3 px-3">অর্ডার আইডি</th>
@@ -1165,7 +1315,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => {
+                    paginatedOrders.map((order) => {
                       const bundleImage = getBundleImage(
                         combos.find((combo) => combo.id === order.bundleId) ?? { id: order.bundleId },
                       );
@@ -1486,6 +1636,72 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   )}
                 </tbody>
               </table>
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3 text-xs text-stone-600">
+                <span>
+                  Showing {filteredOrders.length === 0 ? 0 : pageStartIndex + 1}-
+                  {Math.min(pageStartIndex + pageSize, filteredOrders.length)} of {filteredOrders.length}
+                </span>
+                <label className="flex items-center gap-2">
+                  Rows per page
+                  <select
+                    value={pageSize}
+                    onChange={(event) => {
+                      const nextPageSize = Number(event.target.value);
+                      if ([10, 25, 50].includes(nextPageSize)) setPageSize(nextPageSize);
+                    }}
+                    className="rounded-lg border border-stone-300 bg-white px-2 py-1.5 font-semibold text-stone-800 outline-none focus:border-emerald-600"
+                    aria-label="Rows per page"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center justify-between gap-1 sm:justify-end">
+                <span className="mr-2 whitespace-nowrap text-xs font-semibold text-stone-600">
+                  Page {displayedPage} of {pageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={displayedPage === 1}
+                  className="rounded-lg border border-stone-300 p-2 text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="First page"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={displayedPage === 1}
+                  className="rounded-lg border border-stone-300 p-2 text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
+                  disabled={displayedPage === pageCount}
+                  className="rounded-lg border border-stone-300 p-2 text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(pageCount)}
+                  disabled={displayedPage === pageCount}
+                  className="rounded-lg border border-stone-300 p-2 text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Last page"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}
