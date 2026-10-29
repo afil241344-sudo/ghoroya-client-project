@@ -35,8 +35,6 @@ export default function WooCommerceCheckout({
   const [address, setAddress] = useState('');
   const [deliveryArea, setDeliveryArea] = useState<'dhaka' | 'outside_dhaka'>('dhaka');
   const [note, setNote] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'bkash'>('cod');
-  const [bkashTxId, setBkashTxId] = useState('');
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<string | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -183,10 +181,6 @@ export default function WooCommerceCheckout({
       errors.address = 'ঠিকানাটি আরেকটু বিস্তারিত লিখুন যাতে কুরিয়ার সহজে পৌঁছাতে পারে';
     }
 
-    if (paymentMethod === 'bkash' && !bkashTxId.trim()) {
-      errors.bkashTxId = 'বিকাশ বা নগদ ট্রানজেকশন আইডি (TrxID) লিখুন';
-    }
-
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -220,8 +214,7 @@ export default function WooCommerceCheckout({
         address: address.trim(),
         deliveryArea,
         note: note.trim() || undefined,
-        paymentMethod,
-        bkashTxId: paymentMethod === 'bkash' ? bkashTxId.trim() : undefined,
+        paymentMethod: 'cod',
         bundleId: currentBundle.id,
         quantity,
         couponCode: appliedCoupon || undefined,
@@ -658,25 +651,20 @@ export default function WooCommerceCheckout({
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-200">
                 <h4 className="text-sm font-bold text-stone-900 mb-3 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-emerald-600" />
-                  <span>পেমেন্ট পদ্ধতি নির্বাচন করুন</span>
+                  <span>পেমেন্ট পদ্ধতি</span>
                 </h4>
 
                 <div className="space-y-2.5">
-                  {/* Option 1: Cash on Delivery */}
                   <label
-                    className={`block p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      paymentMethod === 'cod'
-                        ? 'border-emerald-600 bg-emerald-50/50'
-                        : 'border-stone-200 hover:border-stone-300'
-                    }`}
+                    className="block p-3 rounded-xl border-2 border-emerald-600 bg-emerald-50/50"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <input
                           type="radio"
                           name="paymentMethod"
-                          checked={paymentMethod === 'cod'}
-                          onChange={() => setPaymentMethod('cod')}
+                          defaultChecked
+                          readOnly
                           className="accent-emerald-600 w-4 h-4"
                         />
                         <span className="text-xs sm:text-sm font-bold text-stone-900">
@@ -687,55 +675,9 @@ export default function WooCommerceCheckout({
                         জনপ্রিয়
                       </span>
                     </div>
-                    {paymentMethod === 'cod' && (
-                      <p className="mt-2 text-[11px] text-stone-600 pl-6 leading-relaxed">
-                        পণ্য হাতে পেয়ে চেক করে ডেলিভারি ম্যানের কাছে মূল্য পরিশোধ করুন। কোনো অগ্রিম টাকা লাগবে না।
-                      </p>
-                    )}
-                  </label>
-
-                  {/* Option 2: bKash / Nagad */}
-                  <label
-                    className={`block p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      paymentMethod === 'bkash'
-                        ? 'border-emerald-600 bg-emerald-50/50'
-                        : 'border-stone-200 hover:border-stone-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="radio"
-                        name="paymentMethod"
-                        checked={paymentMethod === 'bkash'}
-                        onChange={() => setPaymentMethod('bkash')}
-                        className="accent-emerald-600 w-4 h-4"
-                      />
-                      <span className="text-xs sm:text-sm font-bold text-stone-900">
-                        বিকাশ বা নগদ সেন্ড মানি (bKash / Nagad)
-                      </span>
-                    </div>
-                    {paymentMethod === 'bkash' && (
-                      <div className="mt-3 pl-6 space-y-2 text-xs text-stone-700 bg-white p-3 rounded-lg border border-emerald-200">
-                        <p className="font-medium text-stone-800">
-                          বিকাশ/নগদ পার্সোনাল নম্বর: <strong className="font-mono text-emerald-800">01798-241344</strong> (Send Money করুন)
-                        </p>
-                        <div>
-                          <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                            আপনার TrxID (ট্রানজেকশন আইডি) লিখুন:
-                          </label>
-                          <input
-                            type="text"
-                            value={bkashTxId}
-                            onChange={(e) => setBkashTxId(e.target.value)}
-                            placeholder="যেমন: 9KJ8D72A"
-                            className="w-full px-2.5 py-1.5 border border-stone-300 rounded font-mono text-xs uppercase"
-                          />
-                          {formErrors.bkashTxId && (
-                            <p className="text-[10px] text-rose-600 mt-1">{formErrors.bkashTxId}</p>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    <p className="mt-2 text-[11px] text-stone-600 pl-6 leading-relaxed">
+                      পণ্য হাতে পেয়ে চেক করে ডেলিভারি ম্যানের কাছে মূল্য পরিশোধ করুন। কোনো অগ্রিম টাকা লাগবে না।
+                    </p>
                   </label>
                 </div>
 
