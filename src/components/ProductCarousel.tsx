@@ -52,9 +52,9 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
   return (
     <section
       id="product-carousel-section"
-      className="border-b border-amber-900/10 bg-gradient-to-b from-[#fbf9f4] via-[#f5ede0] to-[#fbf9f4] py-8 sm:py-12"
+      className="border-b border-amber-900/10 bg-gradient-to-b from-[#fbf9f4] via-[#f5ede0] to-[#fbf9f4] pb-8 pt-2 sm:pb-12 sm:pt-3"
     >
-      <div className="mx-auto mt-6 max-w-7xl px-3 sm:mt-8 sm:px-4">
+      <div className="mx-auto max-w-7xl px-3 sm:px-4">
         <div className="mb-3 flex items-center justify-between gap-3 sm:mb-4">
           <h2 className="text-lg font-extrabold text-stone-900 sm:text-2xl">
             সব প্রোডাক্ট

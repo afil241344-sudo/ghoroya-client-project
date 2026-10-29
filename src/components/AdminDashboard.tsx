@@ -43,6 +43,10 @@ import {
 } from 'lucide-react';
 import ImageUploadField from './ImageUploadField';
 import SliderImageUploadField from './SliderImageUploadField';
+import GalleryImagePicker, { GalleryImageOption } from './GalleryImagePicker';
+import heroBowlImage from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
+import packagingBoxImage from '../assets/images/shemai_packaging_box_1793156354481.jpg';
+import preparedDishImage from '../assets/images/prepared_malai_shemai_1793156370328.jpg';
 import {
   fetchAllOrders,
   subscribeToOrders,
@@ -66,14 +70,20 @@ import {
   createSliderImage,
   updateSliderImage,
   deleteSliderImage,
+  fetchHomepageImageCards,
+  createHomepageImageCards,
+  updateHomepageImageCard,
+  deleteHomepageImageCard,
+  HOMEPAGE_IMAGE_CARD_LIMIT,
   StoreDeliverySettings,
   SliderImage,
+  HomepageImageCard,
   BackendOrder,
   BackendCombo,
   ProductItem,
 } from '../services/dbService';
 import { DBCoupon } from '../types';
-import { deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
+import { copyCatalogImageToGallery, deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 
 function isOrderStatus(status: string): status is BackendOrder['status'] {
@@ -217,7 +227,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Tab State: orders, combos, products, coupons, slider, or settings
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'gallery' | 'settings'>('orders');
 
   // Data states
   const [orders, setOrders] = useState<BackendOrder[]>([]);
@@ -225,10 +235,15 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [productsList, setProductsList] = useState<ProductItem[]>([]);
   const [coupons, setCoupons] = useState<DBCoupon[]>([]);
   const [sliderImages, setSliderImages] = useState<SliderImage[]>([]);
+  const [homepageImageCards, setHomepageImageCards] = useState<HomepageImageCard[]>([]);
   const [deliverySettings, setDeliverySettings] = useState<StoreDeliverySettings | null>(null);
   const [isSavingCoupon, setIsSavingCoupon] = useState(false);
   const [isSavingDeliverySettings, setIsSavingDeliverySettings] = useState(false);
   const [isSavingSlider, setIsSavingSlider] = useState(false);
+  const [isSavingGalleryCard, setIsSavingGalleryCard] = useState(false);
+  const [isGalleryFormOpen, setIsGalleryFormOpen] = useState(false);
+  const [galleryImageFiles, setGalleryImageFiles] = useState<File[]>([]);
+  const [gallerySelectedImageUrls, setGallerySelectedImageUrls] = useState<string[]>([]);
   const [isSliderFormOpen, setIsSliderFormOpen] = useState(false);
   const [editingSliderImage, setEditingSliderImage] = useState<SliderImage | null>(null);
   const [sliderImageFile, setSliderImageFile] = useState<File | null>(null);
@@ -297,13 +312,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings, fetchedSliderImages] = await Promise.all([
+      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards] = await Promise.all([
         fetchAllOrders(),
         fetchCombos(),
         fetchAllProducts(),
         fetchAllCoupons(),
         fetchDeliverySettings(),
         fetchSliderImages(),
+        fetchHomepageImageCards(),
       ]);
       setOrders(fetchedOrders);
       setCombos(fetchedCombos);
@@ -311,6 +327,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setCoupons(fetchedCoupons);
       setDeliverySettings(fetchedDeliverySettings);
       setSliderImages(fetchedSliderImages);
+      setHomepageImageCards(fetchedGalleryCards);
       setCatalogLoadError(null);
     } catch (err) {
       console.error('Error fetching admin data:', err);
@@ -357,12 +374,14 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       fetchAllCoupons(),
       fetchDeliverySettings(),
       fetchSliderImages(),
-    ]).then(([cList, pList, couponList, fetchedDeliverySettings, fetchedSliderImages]) => {
+      fetchHomepageImageCards(),
+    ]).then(([cList, pList, couponList, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards]) => {
       setCombos(cList);
       setProductsList(pList);
       setCoupons(couponList);
       setDeliverySettings(fetchedDeliverySettings);
       setSliderImages(fetchedSliderImages);
+      setHomepageImageCards(fetchedGalleryCards);
       setCatalogLoadError(null);
       setIsLoading(false);
     }).catch((error: unknown) => {
@@ -852,6 +871,162 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     }
   };
 
+  const galleryImageOptions: GalleryImageOption[] = [
+    { label: 'আগের হোমপেজ ছবি · সেমাই বোল', imageUrl: heroBowlImage },
+    { label: 'আগের হোমপেজ ছবি · প্যাকেজিং বক্স', imageUrl: packagingBoxImage },
+    { label: 'আগের হোমপেজ ছবি · তৈরি সেমাই', imageUrl: preparedDishImage },
+    ...homepageImageCards.map((card) => ({
+      label: `আগের gallery ছবি · ${card.altText}`,
+      imageUrl: card.imageUrl,
+    })),
+    ...productsList.flatMap((product) => product.imageUrl
+      ? [{ label: `প্রোডাক্ট · ${product.name}`, imageUrl: product.imageUrl }]
+      : []),
+    ...combos.flatMap((combo) => combo.imageUrl
+      ? [{ label: `কম্বো · ${combo.name}`, imageUrl: combo.imageUrl }]
+      : []),
+    ...sliderImages.map((slide) => ({
+      label: `স্লাইডার · ${slide.title}`,
+      imageUrl: slide.imageUrl,
+    })),
+  ].map((option) => ({ ...option, id: option.imageUrl }))
+    .filter((option, index, options) => (
+      options.findIndex((candidate) => candidate.imageUrl === option.imageUrl) === index
+    ));
+
+  const closeGalleryForm = () => {
+    setIsGalleryFormOpen(false);
+    setGalleryImageFiles([]);
+    setGallerySelectedImageUrls([]);
+  };
+
+  const handleSaveGalleryCards = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (homepageImageCards.length >= HOMEPAGE_IMAGE_CARD_LIMIT) {
+      showToast(`সর্বোচ্চ ${HOMEPAGE_IMAGE_CARD_LIMIT}টি image card রাখা যাবে।`);
+      return;
+    }
+    if (galleryImageFiles.length + gallerySelectedImageUrls.length === 0) {
+      showToast('অন্তত একটি ছবি নির্বাচন করুন।');
+      return;
+    }
+    if (galleryImageFiles.length + gallerySelectedImageUrls.length
+      > HOMEPAGE_IMAGE_CARD_LIMIT - homepageImageCards.length) {
+      showToast(`আর সর্বোচ্চ ${HOMEPAGE_IMAGE_CARD_LIMIT - homepageImageCards.length}টি ছবি যোগ করা যাবে।`);
+      return;
+    }
+
+    setIsSavingGalleryCard(true);
+    const uploadedImageUrls: string[] = [];
+    try {
+      const newCards: Array<Omit<HomepageImageCard, 'id'> & { id: string }> = [];
+      let nextOrder = Math.max(-1, ...homepageImageCards.map((card) => card.sortOrder)) + 1;
+      for (const file of galleryImageFiles) {
+        const id = crypto.randomUUID();
+        const imageUrl = await uploadCatalogImage(file, 'gallery', id);
+        uploadedImageUrls.push(imageUrl);
+        newCards.push({
+          id,
+          imageUrl,
+          altText: file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() || 'Product image',
+          sortOrder: nextOrder++,
+          isActive: true,
+        });
+      }
+      for (const sourceUrl of gallerySelectedImageUrls) {
+        const option = galleryImageOptions.find((item) => item.imageUrl === sourceUrl);
+        if (!option) throw new Error('নির্বাচিত একটি ছবি আর পাওয়া যাচ্ছে না। আবার নির্বাচন করুন।');
+        const id = crypto.randomUUID();
+        const imageUrl = await copyCatalogImageToGallery(sourceUrl, id);
+        if (imageUrl !== sourceUrl) uploadedImageUrls.push(imageUrl);
+        newCards.push({
+          id,
+          imageUrl,
+          altText: option.label,
+          sortOrder: nextOrder++,
+          isActive: true,
+        });
+      }
+
+      const createdCards = await createHomepageImageCards(newCards);
+      setHomepageImageCards((current) => [...current, ...createdCards]);
+      window.dispatchEvent(new Event('homepage-images-updated'));
+      closeGalleryForm();
+      showToast(`${createdCards.length}টি image card যোগ করা হয়েছে।`);
+    } catch (error) {
+      for (const imageUrl of uploadedImageUrls) {
+        try {
+          await deleteCatalogImage(imageUrl);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused gallery image:', cleanupError);
+        }
+      }
+      console.error('Could not save homepage image cards:', error);
+      showToast(error instanceof Error ? error.message : 'ছবির card সেভ করা যায়নি।');
+    } finally {
+      setIsSavingGalleryCard(false);
+    }
+  };
+
+  const handleToggleGalleryCard = async (card: HomepageImageCard) => {
+    try {
+      await updateHomepageImageCard(card.id, { isActive: !card.isActive });
+      setHomepageImageCards((current) => current.map((item) => (
+        item.id === card.id ? { ...item, isActive: !item.isActive } : item
+      )));
+      window.dispatchEvent(new Event('homepage-images-updated'));
+    } catch (error) {
+      console.error('Could not change homepage image card visibility:', error);
+      showToast(error instanceof Error ? error.message : 'ছবির card status আপডেট করা যায়নি।');
+    }
+  };
+
+  const handleDeleteGalleryCard = async (card: HomepageImageCard) => {
+    if (!window.confirm('এই ছবির card মুছে ফেলবেন?')) return;
+    try {
+      await deleteHomepageImageCard(card.id);
+      setHomepageImageCards((current) => current.filter((item) => item.id !== card.id));
+      window.dispatchEvent(new Event('homepage-images-updated'));
+    } catch (error) {
+      console.error('Could not delete homepage image card:', error);
+      showToast(error instanceof Error ? error.message : 'ছবির card মুছে ফেলা যায়নি।');
+      return;
+    }
+
+    if (card.imageUrl.includes('/catalog/gallery/')) {
+      try {
+        await deleteCatalogImage(card.imageUrl);
+      } catch (error) {
+        console.error('Gallery record deleted but its Storage image could not be removed:', error);
+        showToast('ছবির card মুছে গেছে, তবে Storage থেকে ছবি মুছতে পারেনি।');
+        return;
+      }
+    }
+    showToast('ছবির card মুছে ফেলা হয়েছে।');
+  };
+
+  const handleMoveGalleryCard = async (cardIndex: number, direction: -1 | 1) => {
+    const destination = cardIndex + direction;
+    if (destination < 0 || destination >= homepageImageCards.length) return;
+    const reordered = [...homepageImageCards];
+    [reordered[cardIndex], reordered[destination]] = [reordered[destination], reordered[cardIndex]];
+    try {
+      await Promise.all(reordered.map((card, index) => (
+        updateHomepageImageCard(card.id, { sortOrder: index })
+      )));
+      setHomepageImageCards(reordered.map((card, index) => ({ ...card, sortOrder: index })));
+      window.dispatchEvent(new Event('homepage-images-updated'));
+    } catch (error) {
+      console.error('Could not reorder homepage image cards:', error);
+      try {
+        setHomepageImageCards(await fetchHomepageImageCards());
+      } catch (refreshError) {
+        console.error('Could not refresh homepage image card order:', refreshError);
+      }
+      showToast(error instanceof Error ? error.message : 'ছবির order আপডেট করা যায়নি।');
+    }
+  };
+
   const handleSaveDeliverySettings = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!deliverySettings) return;
@@ -1327,7 +1502,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
         </div>
 
         {/* Tab Controls: Orders | Combos | Products | Coupons | Slider | Settings */}
-        <div className="grid grid-cols-3 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
+        <div className="grid grid-cols-4 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
@@ -1395,6 +1570,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           >
             <ImageIcon className="w-4 h-4" />
             <span className="truncate sm:whitespace-nowrap">স্লাইডার ({sliderImages.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('gallery')}
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+              activeTab === 'gallery'
+                ? 'border-emerald-700 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span className="truncate sm:whitespace-nowrap">ছবি কার্ড ({homepageImageCards.length})</span>
           </button>
 
           <button
@@ -3217,6 +3404,126 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 </div>
               )}
             </section>
+          </div>
+        )}
+
+        {activeTab === 'gallery' && (
+          <div className="min-w-0 space-y-5 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900">
+                  <ImageIcon className="h-5 w-5 text-amber-700" />
+                  Slider-এর নিচের image cards
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  নতুন ছবি upload করুন অথবা আগে যোগ করা product, combo কিংবা slider image বেছে নিন।
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={homepageImageCards.length >= HOMEPAGE_IMAGE_CARD_LIMIT}
+                onClick={() => {
+                  setGalleryImageFiles([]);
+                  setGallerySelectedImageUrls([]);
+                  setIsGalleryFormOpen(true);
+                }}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+                {homepageImageCards.length >= HOMEPAGE_IMAGE_CARD_LIMIT ? '৬টি ছবি যোগ হয়েছে' : 'ছবি যোগ করুন'}
+              </button>
+            </section>
+            <p className="text-xs text-stone-500">
+              {homepageImageCards.length}/{HOMEPAGE_IMAGE_CARD_LIMIT}টি ছবি · সব ডিভাইসে এক সারিতে ৬টি card দেখাবে।
+            </p>
+
+            {isGalleryFormOpen && (
+              <form onSubmit={handleSaveGalleryCards} className="space-y-4 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 sm:p-5">
+                <GalleryImagePicker
+                  availableSlots={HOMEPAGE_IMAGE_CARD_LIMIT - homepageImageCards.length}
+                  existingImages={galleryImageOptions}
+                  selectedFiles={galleryImageFiles}
+                  selectedImageUrls={gallerySelectedImageUrls}
+                  onFilesChange={setGalleryImageFiles}
+                  onImageUrlsChange={setGallerySelectedImageUrls}
+                />
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={closeGalleryForm}
+                    disabled={isSavingGalleryCard}
+                    className="rounded-lg bg-stone-100 px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-200 disabled:opacity-50"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingGalleryCard || galleryImageFiles.length + gallerySelectedImageUrls.length === 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingGalleryCard
+                      ? 'আপলোড হচ্ছে...'
+                      : `${galleryImageFiles.length + gallerySelectedImageUrls.length}টি card যোগ করুন`}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {homepageImageCards.length === 0 ? (
+              <section className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center">
+                <ImageIcon className="mx-auto h-8 w-8 text-stone-400" />
+                <p className="mt-2 text-sm font-bold text-stone-800">এখনো কোনো image card নেই</p>
+                <p className="mt-1 text-xs text-stone-600">ছবি যোগ করলে slider-এর নিচে এবং product list-এর উপরে দেখাবে।</p>
+              </section>
+            ) : (
+              <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {homepageImageCards.map((card, index) => (
+                  <article key={card.id} className="overflow-hidden rounded-xl border border-stone-200 bg-white">
+                    <img src={card.imageUrl} alt={card.altText} className="aspect-[4/3] w-full bg-stone-100 object-cover" loading="lazy" />
+                    <div className="space-y-3 p-3">
+                      <p className="line-clamp-2 text-xs text-stone-700">{card.altText}</p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void handleMoveGalleryCard(index, -1)}
+                          disabled={index === 0}
+                          aria-label="ছবি আগে নিন"
+                          className="rounded-lg border border-stone-200 p-2 text-stone-600 disabled:opacity-40"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleMoveGalleryCard(index, 1)}
+                          disabled={index === homepageImageCards.length - 1}
+                          aria-label="ছবি পরে নিন"
+                          className="rounded-lg border border-stone-200 p-2 text-stone-600 disabled:opacity-40"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleGalleryCard(card)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-2 text-[11px] font-semibold text-stone-700"
+                        >
+                          {card.isActive ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          {card.isActive ? 'Hide' : 'Show'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteGalleryCard(card)}
+                          aria-label="ছবির card মুছুন"
+                          className="ml-auto rounded-lg border border-rose-100 p-2 text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </section>
+            )}
           </div>
         )}
 

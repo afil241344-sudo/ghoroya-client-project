@@ -47,6 +47,14 @@ export interface SliderImage {
   isActive: boolean;
 }
 
+export interface HomepageImageCard {
+  id: string;
+  imageUrl: string;
+  altText: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 export type BackendProduct = BackendCombo;
 export interface SingleProduct extends ProductItem {}
 export type { ProductItem };
@@ -57,6 +65,8 @@ const PRODUCTS_TABLE = 'products';
 const COUPONS_TABLE = 'coupons';
 const STORE_SETTINGS_TABLE = 'store_settings';
 const SLIDER_IMAGES_TABLE = 'slider_images';
+const HOMEPAGE_IMAGE_CARDS_TABLE = 'homepage_image_cards';
+export const HOMEPAGE_IMAGE_CARD_LIMIT = 6;
 
 export class InsufficientStockError extends Error {
   constructor(message = 'এই পণ্যের পর্যাপ্ত স্টক নেই।') {
@@ -301,6 +311,56 @@ export async function deleteSliderImage(imageId: string): Promise<void> {
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Slider image was not deleted. Check admin permissions.');
+}
+
+export async function fetchHomepageImageCards(activeOnly = false): Promise<HomepageImageCard[]> {
+  let query = getSupabaseClient()
+    .from(HOMEPAGE_IMAGE_CARDS_TABLE)
+    .select('*')
+    .order('sort_order')
+    .order('created_at');
+  if (activeOnly) query = query.eq('is_active', true);
+  const { data, error } = await query;
+  throwOnError(error);
+  return (data ?? []).map((row) => fromDatabaseRow<HomepageImageCard>(row));
+}
+
+export async function createHomepageImageCards(
+  cards: Array<Omit<HomepageImageCard, 'id'> & { id?: string }>,
+): Promise<HomepageImageCard[]> {
+  if (cards.length === 0) return [];
+  const { data, error } = await getSupabaseClient()
+    .from(HOMEPAGE_IMAGE_CARDS_TABLE)
+    .insert(cards.map(toDatabaseRow))
+    .select();
+  throwOnError(error);
+  if (!data) throw new Error('Supabase did not return the created homepage image cards.');
+  return data.map((row) => fromDatabaseRow<HomepageImageCard>(row));
+}
+
+export async function updateHomepageImageCard(
+  imageId: string,
+  updates: Partial<Omit<HomepageImageCard, 'id'>>,
+): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(HOMEPAGE_IMAGE_CARDS_TABLE)
+    .update(toDatabaseRow(updates))
+    .eq('id', imageId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Homepage image card was not updated. Check admin permissions.');
+}
+
+export async function deleteHomepageImageCard(imageId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(HOMEPAGE_IMAGE_CARDS_TABLE)
+    .delete()
+    .eq('id', imageId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Homepage image card was not deleted. Check admin permissions.');
 }
 
 export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<BackendOrder> {

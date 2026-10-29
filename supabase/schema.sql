@@ -63,6 +63,19 @@ create table if not exists public.slider_images (
 create index if not exists slider_images_active_order_idx
   on public.slider_images (is_active, sort_order, created_at);
 
+create table if not exists public.homepage_image_cards (
+  id uuid primary key default gen_random_uuid(),
+  image_url text not null,
+  alt_text text not null,
+  sort_order integer not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists homepage_image_cards_active_order_idx
+  on public.homepage_image_cards (is_active, sort_order, created_at);
+
 create table if not exists public.orders (
   id text primary key,
   order_id text not null unique,
@@ -301,6 +314,7 @@ alter table public.combos enable row level security;
 alter table public.coupons enable row level security;
 alter table public.store_settings enable row level security;
 alter table public.slider_images enable row level security;
+alter table public.homepage_image_cards enable row level security;
 alter table public.orders enable row level security;
 
 drop policy if exists "Catalog is public to read" on public.products;
@@ -345,6 +359,15 @@ create policy "Active slider images are public to read"
 drop policy if exists "Admins manage slider images" on public.slider_images;
 create policy "Admins manage slider images"
   on public.slider_images for all to authenticated
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
+drop policy if exists "Active homepage image cards are public to read" on public.homepage_image_cards;
+create policy "Active homepage image cards are public to read"
+  on public.homepage_image_cards for select to anon, authenticated using (is_active);
+drop policy if exists "Admins manage homepage image cards" on public.homepage_image_cards;
+create policy "Admins manage homepage image cards"
+  on public.homepage_image_cards for all to authenticated
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 

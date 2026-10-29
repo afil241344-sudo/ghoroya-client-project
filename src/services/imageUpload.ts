@@ -9,7 +9,7 @@ const SLIDER_ASPECT_TOLERANCE = 0.015;
 
 export async function uploadCatalogImage(
   file: File,
-  folder: 'products' | 'combos' | 'slider',
+  folder: 'products' | 'combos' | 'slider' | 'gallery',
   itemId: string,
 ): Promise<string> {
   const allowedImageTypes = folder === 'slider'
@@ -56,6 +56,45 @@ export async function uploadCatalogImage(
   }
 
   return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(filePath).data.publicUrl;
+}
+
+export async function copyCatalogImageToGallery(
+  imageUrl: string,
+  itemId: string,
+): Promise<string> {
+  const marker = '/storage/v1/object/public/catalog/';
+  const markerIndex = imageUrl.indexOf(marker);
+  let blob: Blob;
+  let fileName: string;
+
+  if (markerIndex >= 0) {
+    const objectPath = decodeURIComponent(imageUrl.slice(markerIndex + marker.length));
+    if (!objectPath) throw new Error('নির্বাচিত ছবির Storage path পাওয়া যায়নি।');
+    const { data, error } = await getSupabaseClient().storage
+      .from(IMAGE_BUCKET)
+      .download(objectPath);
+    if (error) throw new Error(`নির্বাচিত ছবি কপি করা যায়নি: ${error.message}`);
+    blob = data;
+    fileName = objectPath.split('/').pop() || 'selected-image';
+  } else {
+    const response = await fetch(imageUrl);
+    if (!response.ok) throw new Error(`নির্বাচিত ছবি পড়া যায়নি (HTTP ${response.status})।`);
+    blob = await response.blob();
+    fileName = new URL(imageUrl, window.location.href).pathname.split('/').pop() || 'selected-image';
+  }
+
+  const extension = fileName.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'image';
+  const mimeType = blob.type || ({
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    avif: 'image/avif',
+  }[extension.toLowerCase()] ?? '');
+  if (!mimeType) throw new Error('নির্বাচিত ছবির format চেনা যায়নি।');
+  const file = new File([blob], `selected-image.${extension}`, { type: mimeType });
+  return uploadCatalogImage(file, 'gallery', itemId);
 }
 
 export async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {

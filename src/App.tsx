@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import HeaderAnnouncement from './components/HeaderAnnouncement';
 import HeroSlider from './components/HeroSlider';
+import HomepageImageCards from './components/HomepageImageCards';
 import ProductCarousel from './components/ProductCarousel';
 import WhyChooseUs from './components/WhyChooseUs';
 import BundleSelector from './components/BundleSelector';
@@ -129,7 +130,10 @@ export default function App() {
         {/* 2. Hero Section Image Slider */}
         <HeroSlider />
 
-        {/* 3. Dedicated Carousel Slider for Individual Products (Not Combo Pack) */}
+        {/* 3. Admin-managed image cards */}
+        <HomepageImageCards />
+
+        {/* 4. Dedicated Carousel Slider for Individual Products (Not Combo Pack) */}
         <ProductCarousel onSelectProduct={handleSelectProduct} />
 
         {/* 4. CartFlows 1-Click Package / Combo Pack Selector */}
