@@ -1899,7 +1899,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         <p className="break-words font-semibold text-stone-800">{order.bundleName} · {order.quantity} টি</p>
                       </div>
                       <p className="break-words text-stone-600">{order.customerAddress}</p>
-                      <p className="text-stone-500">{order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'} · {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}</p>
+                      <p className="text-stone-500">
+                        {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
+                        {' · ডেলিভারি চার্জ: '}
+                        {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('bn-BD')}`}
+                        {' · '}
+                        {order.paymentMethod === 'cod' ? 'ক্যাশ অন ডেলিভারি' : 'bKash/Nagad'}
+                      </p>
                       {order.bkashTxId && <p className="break-all text-stone-500">Trx: {order.bkashTxId}</p>}
                       {order.note && <p className="break-words text-amber-800">নোট: {order.note}</p>}
                       {order.courierTrackingCode && (
@@ -2046,7 +2052,9 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                               {order.customerAddress}
                             </div>
                             <span className="inline-block mt-1 text-[10px] bg-stone-100 text-stone-700 px-1.5 py-0.2 rounded">
-                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে (৳৭০)' : 'ঢাকার বাইরে (৳১৩০)'}
+                              {order.deliveryArea === 'dhaka' ? 'ঢাকার ভেতরে' : 'ঢাকার বাইরে'}
+                              {' · ডেলিভারি চার্জ: '}
+                              {order.deliveryCharge === 0 ? 'ফ্রি' : `৳${order.deliveryCharge.toLocaleString('bn-BD')}`}
                             </span>
                             {order.note && (
                               <p className="text-[10px] text-amber-800 italic mt-0.5">
