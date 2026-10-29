@@ -76,6 +76,23 @@ create table if not exists public.homepage_image_cards (
 create index if not exists homepage_image_cards_active_order_idx
   on public.homepage_image_cards (is_active, sort_order, created_at);
 
+create table if not exists public.customer_reviews (
+  id uuid primary key default gen_random_uuid(),
+  author text not null check (char_length(btrim(author)) between 2 and 80),
+  location text not null default '' check (char_length(location) <= 120),
+  rating integer not null check (rating between 1 and 5),
+  comment text not null check (char_length(btrim(comment)) between 10 and 1500),
+  order_type text not null default '' check (char_length(order_type) <= 100),
+  screenshot_path text check (screenshot_path is null or screenshot_path like 'reviews/%'),
+  verified boolean not null default false,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  source text not null default 'customer' check (source in ('customer', 'admin')),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists customer_reviews_status_created_idx
+  on public.customer_reviews (status, created_at desc);
+
 create table if not exists public.orders (
   id text primary key,
   order_id text not null unique,
@@ -315,6 +332,7 @@ alter table public.coupons enable row level security;
 alter table public.store_settings enable row level security;
 alter table public.slider_images enable row level security;
 alter table public.homepage_image_cards enable row level security;
+alter table public.customer_reviews enable row level security;
 alter table public.orders enable row level security;
 
 drop policy if exists "Catalog is public to read" on public.products;
@@ -371,6 +389,19 @@ create policy "Admins manage homepage image cards"
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
+drop policy if exists "Approved customer reviews are public" on public.customer_reviews;
+create policy "Approved customer reviews are public"
+  on public.customer_reviews for select to anon, authenticated using (status = 'approved');
+drop policy if exists "Customers can submit pending reviews" on public.customer_reviews;
+create policy "Customers can submit pending reviews"
+  on public.customer_reviews for insert to anon
+  with check (status = 'pending' and verified = false and source = 'customer');
+drop policy if exists "Admins manage customer reviews" on public.customer_reviews;
+create policy "Admins manage customer reviews"
+  on public.customer_reviews for all to authenticated
+  using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
+  with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
+
 drop policy if exists "Customers can place pending orders" on public.orders;
 drop policy if exists "Admins manage orders" on public.orders;
 create policy "Admins manage orders"
@@ -391,6 +422,13 @@ on conflict (id) do nothing;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('catalog', 'catalog', true, 5242880, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'])
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('review-evidence', 'review-evidence', false, 5242880, array['image/jpeg', 'image/png', 'image/webp', 'image/avif'])
 on conflict (id) do update
 set public = excluded.public,
     file_size_limit = excluded.file_size_limit,
@@ -423,6 +461,41 @@ create policy "Admins delete catalog images"
   on storage.objects for delete to authenticated
   using (
     bucket_id = 'catalog'
+    and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  );
+drop policy if exists "Review evidence is visible to admins and approved reviews" on storage.objects;
+create policy "Review evidence is visible to admins and approved reviews"
+  on storage.objects for select to anon, authenticated
+  using (
+    bucket_id = 'review-evidence'
+    and (
+      (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+      or exists (
+        select 1
+        from public.customer_reviews
+        where customer_reviews.screenshot_path = storage.objects.name
+          and customer_reviews.status = 'approved'
+      )
+    )
+  );
+drop policy if exists "Customers upload review images" on storage.objects;
+create policy "Customers upload review images"
+  on storage.objects for insert to anon
+  with check (
+    bucket_id = 'review-evidence'
+    and (storage.foldername(name))[1] = 'reviews'
+    and (storage.foldername(name))[2] is not null
+    and coalesce(metadata ->> 'mimetype', '') like 'image/%'
+  );
+drop policy if exists "Admins manage review evidence" on storage.objects;
+create policy "Admins manage review evidence"
+  on storage.objects for all to authenticated
+  using (
+    bucket_id = 'review-evidence'
+    and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  )
+  with check (
+    bucket_id = 'review-evidence'
     and (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
   );
 

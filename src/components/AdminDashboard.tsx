@@ -40,6 +40,8 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Star,
+  MessageSquare,
 } from 'lucide-react';
 import SliderImageUploadField from './SliderImageUploadField';
 import GalleryImagePicker, { GalleryImageOption } from './GalleryImagePicker';
@@ -74,6 +76,12 @@ import {
   updateHomepageImageCard,
   deleteHomepageImageCard,
   HOMEPAGE_IMAGE_CARD_LIMIT,
+  fetchAllCustomerReviews,
+  createAdminCustomerReview,
+  updateCustomerReviewStatus,
+  deleteCustomerReview,
+  CustomerReviewRecord,
+  CustomerReviewStatus,
   StoreDeliverySettings,
   SliderImage,
   HomepageImageCard,
@@ -87,9 +95,11 @@ import {
   copyCatalogImageToGallery,
   deleteCatalogImage,
   deleteCatalogImages,
+  deleteReviewImage,
   listCatalogImages,
   CatalogStorageImage,
   uploadCatalogImage,
+  uploadReviewImage,
 } from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 
@@ -234,7 +244,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   // Tab State: orders, combos, products, coupons, slider, or settings
-  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'gallery' | 'images' | 'settings'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'reviews' | 'slider' | 'gallery' | 'images' | 'settings'>('orders');
   const [isStorefrontMenuOpen, setIsStorefrontMenuOpen] = useState(false);
   const storefrontMenuRef = useRef<HTMLDivElement>(null);
 
@@ -245,6 +255,18 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [coupons, setCoupons] = useState<DBCoupon[]>([]);
   const [sliderImages, setSliderImages] = useState<SliderImage[]>([]);
   const [homepageImageCards, setHomepageImageCards] = useState<HomepageImageCard[]>([]);
+  const [customerReviews, setCustomerReviews] = useState<CustomerReviewRecord[]>([]);
+  const [isSavingReview, setIsSavingReview] = useState(false);
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<'all' | CustomerReviewStatus>('pending');
+  const [reviewForm, setReviewForm] = useState({
+    author: '',
+    location: '',
+    rating: 5,
+    comment: '',
+    orderType: '',
+  });
+  const [reviewScreenshot, setReviewScreenshot] = useState<File | null>(null);
   const [catalogImages, setCatalogImages] = useState<CatalogStorageImage[]>([]);
   const [selectedCatalogImagePaths, setSelectedCatalogImagePaths] = useState<string[]>([]);
   const [isLoadingCatalogImages, setIsLoadingCatalogImages] = useState(false);
@@ -491,7 +513,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const loadData = async () => {
     setIsRefreshing(true);
     try {
-      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards] = await Promise.all([
+      const [fetchedOrders, fetchedCombos, fetchedProducts, fetchedCoupons, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards, fetchedReviews] = await Promise.all([
         fetchAllOrders(),
         fetchCombos(),
         fetchAllProducts(),
@@ -499,6 +521,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
         fetchDeliverySettings(),
         fetchSliderImages(),
         fetchHomepageImageCards(),
+        fetchAllCustomerReviews(),
       ]);
       setOrders(fetchedOrders);
       setCombos(fetchedCombos);
@@ -507,6 +530,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setDeliverySettings(fetchedDeliverySettings);
       setSliderImages(fetchedSliderImages);
       setHomepageImageCards(fetchedGalleryCards);
+      setCustomerReviews(fetchedReviews);
       setCatalogLoadError(null);
     } catch (err) {
       console.error('Error fetching admin data:', err);
@@ -554,13 +578,15 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       fetchDeliverySettings(),
       fetchSliderImages(),
       fetchHomepageImageCards(),
-    ]).then(([cList, pList, couponList, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards]) => {
+      fetchAllCustomerReviews(),
+    ]).then(([cList, pList, couponList, fetchedDeliverySettings, fetchedSliderImages, fetchedGalleryCards, fetchedReviews]) => {
       setCombos(cList);
       setProductsList(pList);
       setCoupons(couponList);
       setDeliverySettings(fetchedDeliverySettings);
       setSliderImages(fetchedSliderImages);
       setHomepageImageCards(fetchedGalleryCards);
+      setCustomerReviews(fetchedReviews);
       setCatalogLoadError(null);
       setIsLoading(false);
     }).catch((error: unknown) => {
@@ -939,6 +965,90 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       showToast(error instanceof Error ? error.message : 'কুপন তৈরি করা যায়নি।');
     } finally {
       setIsSavingCoupon(false);
+    }
+  };
+
+  const handleCreateAdminReview = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const author = reviewForm.author.trim();
+    const comment = reviewForm.comment.trim();
+    if (author.length < 2 || comment.length < 10) {
+      showToast('নাম কমপক্ষে ২ অক্ষর এবং রিভিউ কমপক্ষে ১০ অক্ষরের হতে হবে।');
+      return;
+    }
+
+    setIsSavingReview(true);
+    let screenshotPath: string | null = null;
+    try {
+      if (reviewScreenshot) {
+        screenshotPath = await uploadReviewImage(reviewScreenshot, crypto.randomUUID());
+      }
+      const created = await createAdminCustomerReview({
+        ...reviewForm,
+        author,
+        comment,
+        location: reviewForm.location.trim(),
+        orderType: reviewForm.orderType.trim(),
+        screenshotPath,
+      });
+      setCustomerReviews((current) => [created, ...current]);
+      setReviewForm({ author: '', location: '', rating: 5, comment: '', orderType: '' });
+      setReviewScreenshot(null);
+      setIsReviewFormOpen(false);
+      showToast('নতুন রিভিউ যোগ ও প্রকাশ করা হয়েছে।');
+    } catch (error) {
+      if (screenshotPath) {
+        try {
+          await deleteReviewImage(screenshotPath);
+        } catch (cleanupError) {
+          console.error('Could not clean up an unused admin review screenshot:', cleanupError);
+        }
+      }
+      console.error('Could not create admin review:', error);
+      showToast(error instanceof Error ? error.message : 'রিভিউ যোগ করা যায়নি।');
+    } finally {
+      setIsSavingReview(false);
+    }
+  };
+
+  const handleUpdateReviewStatus = async (
+    review: CustomerReviewRecord,
+    status: CustomerReviewStatus,
+  ) => {
+    try {
+      await updateCustomerReviewStatus(review.id, status);
+      setCustomerReviews((current) => current.map((item) => (
+        item.id === review.id ? { ...item, status } : item
+      )));
+      showToast(status === 'approved'
+        ? 'রিভিউ অনুমোদন করে প্রকাশ করা হয়েছে।'
+        : status === 'rejected'
+          ? 'রিভিউ বাতিল করা হয়েছে।'
+          : 'রিভিউ pending করা হয়েছে।');
+    } catch (error) {
+      console.error('Could not update review status:', error);
+      showToast(error instanceof Error ? error.message : 'রিভিউ status পরিবর্তন করা যায়নি।');
+    }
+  };
+
+  const handleDeleteCustomerReview = async (review: CustomerReviewRecord) => {
+    if (!window.confirm(`"${review.author}"-এর রিভিউ স্থায়ীভাবে মুছে ফেলবেন?`)) return;
+    try {
+      await deleteCustomerReview(review.id);
+      setCustomerReviews((current) => current.filter((item) => item.id !== review.id));
+      if (review.screenshotPath) {
+        try {
+          await deleteReviewImage(review.screenshotPath);
+        } catch (cleanupError) {
+          console.error('Review deleted but its screenshot could not be removed:', cleanupError);
+          showToast('রিভিউ মুছে গেছে, তবে screenshot Storage থেকে মুছতে পারেনি।');
+          return;
+        }
+      }
+      showToast('রিভিউ মুছে ফেলা হয়েছে।');
+    } catch (error) {
+      console.error('Could not delete customer review:', error);
+      showToast(error instanceof Error ? error.message : 'রিভিউ মুছে ফেলা যায়নি।');
     }
   };
 
@@ -1796,6 +1906,20 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           >
             <Tag className="w-4 h-4" />
             <span className="truncate sm:whitespace-nowrap">কুপন ({coupons.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('reviews')}
+            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+              activeTab === 'reviews'
+                ? 'border-emerald-700 text-emerald-800'
+                : 'border-transparent text-stone-500 hover:text-stone-800'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span className="truncate sm:whitespace-nowrap">
+              রিভিউ ({customerReviews.filter((review) => review.status === 'pending').length})
+            </span>
           </button>
 
           <div ref={storefrontMenuRef} className="relative flex min-w-0 justify-center sm:justify-start">
@@ -3683,6 +3807,252 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </form>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'reviews' && (
+          <div className="min-w-0 space-y-5 rounded-b-xl border border-t-0 border-stone-200 bg-white p-3 sm:p-6">
+            <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-black text-stone-900">
+                  <MessageSquare className="h-5 w-5 text-emerald-700" />
+                  গ্রাহক রিভিউ
+                </h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  গ্রাহকের জমা দেওয়া রিভিউ যাচাই করে প্রকাশ করুন, অথবা admin থেকে রিভিউ যোগ করুন।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReviewFormOpen((open) => !open)}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"
+              >
+                <Plus className="h-4 w-4" />
+                রিভিউ যোগ করুন
+              </button>
+            </section>
+
+            {isReviewFormOpen && (
+              <form onSubmit={(event) => void handleCreateAdminReview(event)} className="space-y-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-bold text-stone-700">
+                    গ্রাহকের নাম
+                    <input
+                      required
+                      minLength={2}
+                      maxLength={80}
+                      value={reviewForm.author}
+                      onChange={(event) => setReviewForm((current) => ({ ...current, author: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal"
+                    />
+                  </label>
+                  <label className="text-xs font-bold text-stone-700">
+                    এলাকা
+                    <input
+                      maxLength={120}
+                      value={reviewForm.location}
+                      onChange={(event) => setReviewForm((current) => ({ ...current, location: event.target.value }))}
+                      className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal"
+                    />
+                  </label>
+                </div>
+                <label className="block text-xs font-bold text-stone-700">
+                  পণ্যের নাম / অর্ডার
+                  <input
+                    maxLength={100}
+                    value={reviewForm.orderType}
+                    onChange={(event) => setReviewForm((current) => ({ ...current, orderType: event.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal"
+                  />
+                </label>
+                <fieldset>
+                  <legend className="text-xs font-bold text-stone-700">রেটিং</legend>
+                  <div className="mt-1 flex gap-1">
+                    {[1, 2, 3, 4, 5].map((rating) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        aria-label={`${rating} স্টার`}
+                        aria-pressed={reviewForm.rating === rating}
+                        onClick={() => setReviewForm((current) => ({ ...current, rating }))}
+                        className="rounded p-1 text-amber-500"
+                      >
+                        <Star className={`h-6 w-6 ${reviewForm.rating >= rating ? 'fill-current' : ''}`} />
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <label className="block text-xs font-bold text-stone-700">
+                  রিভিউ
+                  <textarea
+                    required
+                    minLength={10}
+                    maxLength={1500}
+                    rows={4}
+                    value={reviewForm.comment}
+                    onChange={(event) => setReviewForm((current) => ({ ...current, comment: event.target.value }))}
+                    className="mt-1 w-full resize-y rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-sm font-normal"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-stone-700">
+                  Screenshot / ছবি (ঐচ্ছিক)
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif"
+                    onChange={(event) => {
+                      setReviewScreenshot(event.target.files?.[0] ?? null);
+                      event.target.value = '';
+                    }}
+                    className="mt-1 block w-full rounded-lg border border-stone-300 bg-white p-2 text-xs"
+                  />
+                </label>
+                {reviewScreenshot && (
+                  <p className="text-xs text-stone-600">{reviewScreenshot.name}</p>
+                )}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsReviewFormOpen(false);
+                      setReviewScreenshot(null);
+                    }}
+                    disabled={isSavingReview}
+                    className="rounded-lg border border-stone-300 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-100 disabled:opacity-50"
+                  >
+                    বাতিল
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingReview}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" />
+                    {isSavingReview ? 'সেভ হচ্ছে...' : 'প্রকাশ করে সেভ করুন'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {([
+                ['pending', 'অনুমোদনের অপেক্ষায়'],
+                ['approved', 'প্রকাশিত'],
+                ['rejected', 'বাতিল'],
+                ['all', 'সব'],
+              ] as const).map(([status, label]) => {
+                const count = status === 'all'
+                  ? customerReviews.length
+                  : customerReviews.filter((review) => review.status === status).length;
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setReviewStatusFilter(status)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
+                      reviewStatusFilter === status
+                        ? 'border-emerald-700 bg-emerald-700 text-white'
+                        : 'border-stone-300 bg-white text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {customerReviews.filter((review) => (
+              reviewStatusFilter === 'all' || review.status === reviewStatusFilter
+            )).length === 0 ? (
+              <div className="rounded-xl border border-dashed border-stone-300 bg-stone-50 p-8 text-center">
+                <MessageSquare className="mx-auto h-8 w-8 text-stone-400" />
+                <p className="mt-2 text-sm font-bold text-stone-800">এই তালিকায় কোনো রিভিউ নেই</p>
+              </div>
+            ) : (
+              <section className="grid gap-3 lg:grid-cols-2">
+                {customerReviews
+                  .filter((review) => reviewStatusFilter === 'all' || review.status === reviewStatusFilter)
+                  .map((review) => (
+                    <article key={review.id} className="space-y-3 rounded-xl border border-stone-200 bg-white p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className="font-bold text-stone-900">{review.author}</h4>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              review.status === 'approved'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : review.status === 'pending'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-stone-200 text-stone-700'
+                            }`}>
+                              {review.status === 'approved' ? 'প্রকাশিত' : review.status === 'pending' ? 'অপেক্ষায়' : 'বাতিল'}
+                            </span>
+                            {review.source === 'admin' && (
+                              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-800">Admin added</span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[11px] text-stone-500">
+                            {[review.location, review.orderType, new Date(review.createdAt).toLocaleDateString('bn-BD')].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 text-amber-500" aria-label={`${review.rating} out of 5 stars`}>
+                          {Array.from({ length: review.rating }, (_, index) => (
+                            <Star key={index} className="h-3.5 w-3.5 fill-current" />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-stone-700">{review.comment}</p>
+                      {review.screenshotUrl && (
+                        <a href={review.screenshotUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-800 hover:underline">
+                          <img src={review.screenshotUrl} alt="Review screenshot" className="h-16 w-16 rounded-lg border border-stone-200 object-cover" loading="lazy" />
+                          Screenshot দেখুন
+                        </a>
+                      )}
+                      {review.screenshotError && (
+                        <p role="status" className="text-xs text-amber-700">
+                          Screenshot লোড হয়নি: {review.screenshotError}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap gap-2 border-t border-stone-100 pt-3">
+                        {review.status !== 'approved' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleUpdateReviewStatus(review, 'approved')}
+                            className="rounded-lg bg-emerald-700 px-3 py-2 text-[11px] font-bold text-white hover:bg-emerald-800"
+                          >
+                            অনুমোদন ও প্রকাশ
+                          </button>
+                        )}
+                        {review.status !== 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleUpdateReviewStatus(review, 'pending')}
+                            className="rounded-lg border border-amber-300 px-3 py-2 text-[11px] font-bold text-amber-800 hover:bg-amber-50"
+                          >
+                            Pending করুন
+                          </button>
+                        )}
+                        {review.status !== 'rejected' && (
+                          <button
+                            type="button"
+                            onClick={() => void handleUpdateReviewStatus(review, 'rejected')}
+                            className="rounded-lg border border-stone-300 px-3 py-2 text-[11px] font-bold text-stone-700 hover:bg-stone-50"
+                          >
+                            বাতিল করুন
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteCustomerReview(review)}
+                          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          মুছুন
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+              </section>
             )}
           </div>
         )}

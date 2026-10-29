@@ -44,6 +44,8 @@ export interface CustomerReview {
   verified: boolean;
   comment: string;
   orderType: string;
+  screenshotUrl?: string | null;
+  screenshotError?: string;
 }
 
 export interface OrderFormData {

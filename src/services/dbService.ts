@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../lib/supabase';
-import { DBCoupon, PlacedOrder, ShemaiBundle, ProductItem } from '../types';
+import { CustomerReview, DBCoupon, PlacedOrder, ShemaiBundle, ProductItem } from '../types';
+import { createSignedReviewImageUrl } from './imageUpload';
 
 export interface BackendOrder {
   id: string;
@@ -66,7 +67,50 @@ const COUPONS_TABLE = 'coupons';
 const STORE_SETTINGS_TABLE = 'store_settings';
 const SLIDER_IMAGES_TABLE = 'slider_images';
 const HOMEPAGE_IMAGE_CARDS_TABLE = 'homepage_image_cards';
+const CUSTOMER_REVIEWS_TABLE = 'customer_reviews';
 export const HOMEPAGE_IMAGE_CARD_LIMIT = 6;
+
+export type CustomerReviewStatus = 'pending' | 'approved' | 'rejected';
+
+export interface CustomerReviewRecord extends Omit<CustomerReview, 'date' | 'screenshotUrl'> {
+  status: CustomerReviewStatus;
+  screenshotPath: string | null;
+  screenshotUrl: string | null;
+  screenshotError?: string;
+  source: 'customer' | 'admin';
+  createdAt: string;
+}
+
+export interface CustomerReviewSubmission {
+  author: string;
+  location: string;
+  rating: number;
+  comment: string;
+  orderType: string;
+  screenshotPath?: string | null;
+}
+
+async function addSignedReviewImageUrls(
+  records: CustomerReviewRecord[],
+  thumbnail = false,
+): Promise<CustomerReviewRecord[]> {
+  return Promise.all(records.map(async (record) => {
+    if (!record.screenshotPath) return { ...record, screenshotUrl: null };
+    try {
+      return {
+        ...record,
+        screenshotUrl: await createSignedReviewImageUrl(record.screenshotPath, thumbnail),
+      };
+    } catch (error) {
+      console.error(`Could not create a signed URL for review ${record.id}:`, error);
+      return {
+        ...record,
+        screenshotUrl: null,
+        screenshotError: error instanceof Error ? error.message : 'Screenshot দেখা যাচ্ছে না।',
+      };
+    }
+  }));
+}
 
 export class InsufficientStockError extends Error {
   constructor(message = 'এই পণ্যের পর্যাপ্ত স্টক নেই।') {
@@ -424,6 +468,97 @@ export async function deleteHomepageImageCard(imageId: string): Promise<void> {
   throwOnError(error);
   if (!data) throw new Error('Homepage image card was not deleted. Check admin permissions.');
   invalidateReadCache('homepage-image-cards-true', 'homepage-image-cards-false');
+}
+
+export async function fetchApprovedCustomerReviews(): Promise<CustomerReviewRecord[]> {
+  return cachedRead('approved-customer-reviews', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(CUSTOMER_REVIEWS_TABLE)
+      .select('*')
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .limit(12);
+    throwOnError(error);
+    const records = (data ?? []).map((row) => fromDatabaseRow<CustomerReviewRecord>(row));
+    return addSignedReviewImageUrls(records, true);
+  });
+}
+
+export async function fetchAllCustomerReviews(): Promise<CustomerReviewRecord[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(CUSTOMER_REVIEWS_TABLE)
+    .select('*')
+    .order('created_at', { ascending: false });
+  throwOnError(error);
+  const records = (data ?? []).map((row) => fromDatabaseRow<CustomerReviewRecord>(row));
+  return addSignedReviewImageUrls(records);
+}
+
+export async function submitCustomerReview(
+  submission: CustomerReviewSubmission,
+): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from(CUSTOMER_REVIEWS_TABLE)
+    .insert(toDatabaseRow({
+      ...submission,
+      verified: false,
+      status: 'pending',
+      source: 'customer',
+    }));
+  throwOnError(error);
+  invalidateReadCache('approved-customer-reviews');
+}
+
+export async function createAdminCustomerReview(
+  submission: CustomerReviewSubmission,
+): Promise<CustomerReviewRecord> {
+  const screenshotUrl = submission.screenshotPath
+    ? await createSignedReviewImageUrl(submission.screenshotPath)
+    : null;
+  const { data, error } = await getSupabaseClient()
+    .from(CUSTOMER_REVIEWS_TABLE)
+    .insert(toDatabaseRow({
+      ...submission,
+      verified: false,
+      status: 'approved',
+      source: 'admin',
+    }))
+    .select()
+    .single();
+  throwOnError(error);
+  if (!data) throw new Error('Supabase did not return the created review.');
+  invalidateReadCache('approved-customer-reviews');
+  return {
+    ...fromDatabaseRow<CustomerReviewRecord>(data),
+    screenshotUrl,
+  };
+}
+
+export async function updateCustomerReviewStatus(
+  reviewId: string,
+  status: CustomerReviewStatus,
+): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(CUSTOMER_REVIEWS_TABLE)
+    .update({ status })
+    .eq('id', reviewId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Review status was not updated. Check admin permissions.');
+  invalidateReadCache('approved-customer-reviews');
+}
+
+export async function deleteCustomerReview(reviewId: string): Promise<void> {
+  const { data, error } = await getSupabaseClient()
+    .from(CUSTOMER_REVIEWS_TABLE)
+    .delete()
+    .eq('id', reviewId)
+    .select('id')
+    .maybeSingle();
+  throwOnError(error);
+  if (!data) throw new Error('Review was not deleted. Check admin permissions.');
+  invalidateReadCache('approved-customer-reviews');
 }
 
 export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<BackendOrder> {

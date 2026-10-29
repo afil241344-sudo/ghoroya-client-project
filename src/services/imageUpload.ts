@@ -3,6 +3,7 @@ import { getSupabaseClient } from '../lib/supabase';
 const MAX_SOURCE_IMAGE_SIZE_BYTES = 15 * 1024 * 1024;
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const IMAGE_BUCKET = 'catalog';
+const REVIEW_IMAGE_BUCKET = 'review-evidence';
 const SLIDER_MIN_WIDTH = 1280;
 const SLIDER_MIN_HEIGHT = 720;
 const SLIDER_ASPECT_RATIO = 16 / 9;
@@ -22,14 +23,19 @@ export interface CatalogStorageImage {
 
 async function optimizeCatalogImage(
   file: File,
-  folder: 'products' | 'combos' | 'slider' | 'gallery',
+  folder: 'products' | 'combos' | 'slider' | 'gallery' | 'reviews',
 ): Promise<File> {
   if (file.type === 'image/gif') return file;
 
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
-    const maxWidth = folder === 'slider' ? MAX_SLIDER_IMAGE_WIDTH : MAX_CATALOG_IMAGE_DIMENSION;
-    const maxHeight = folder === 'slider' ? MAX_SLIDER_IMAGE_HEIGHT : MAX_CATALOG_IMAGE_DIMENSION;
+    const maxDimension = folder === 'slider'
+      ? MAX_SLIDER_IMAGE_WIDTH
+      : folder === 'reviews'
+        ? 1200
+        : MAX_CATALOG_IMAGE_DIMENSION;
+    const maxWidth = maxDimension;
+    const maxHeight = folder === 'slider' ? MAX_SLIDER_IMAGE_HEIGHT : maxDimension;
     const scale = Math.min(1, maxWidth / bitmap.width, maxHeight / bitmap.height);
     const width = Math.max(1, Math.round(bitmap.width * scale));
     const height = Math.max(1, Math.round(bitmap.height * scale));
@@ -124,6 +130,52 @@ export async function uploadCatalogImage(
   }
 
   return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(filePath).data.publicUrl;
+}
+
+export async function uploadReviewImage(file: File, reviewId: string): Promise<string> {
+  const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif']);
+  if (!allowedImageTypes.has(file.type)) {
+    throw new Error('Review screenshot-এর জন্য JPEG, PNG, WebP অথবা AVIF ছবি নির্বাচন করুন।');
+  }
+  if (file.size > MAX_SOURCE_IMAGE_SIZE_BYTES) {
+    throw new Error('Upload-এর আগে screenshot-এর সাইজ ১৫ MB-এর মধ্যে হতে হবে।');
+  }
+
+  const optimizedFile = await optimizeCatalogImage(file, 'reviews');
+  if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error('Screenshot optimize করার পরও ৫ MB-এর বেশি।');
+  }
+  const fileExtension = optimizedFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'webp';
+  const filePath = `reviews/${reviewId}/${Date.now()}.${fileExtension}`;
+  const { error } = await getSupabaseClient()
+    .storage
+    .from(REVIEW_IMAGE_BUCKET)
+    .upload(filePath, optimizedFile, { upsert: false, contentType: optimizedFile.type });
+  if (error) throw new Error(`Review screenshot আপলোড করা যায়নি: ${error.message}`);
+  return filePath;
+}
+
+export async function createSignedReviewImageUrl(filePath: string, thumbnail = false): Promise<string> {
+  const bucket = getSupabaseClient().storage.from(REVIEW_IMAGE_BUCKET);
+  if (thumbnail) {
+    const optimized = await bucket.createSignedUrl(filePath, 60 * 60, {
+      transform: { width: 960, height: 960, resize: 'contain', quality: 75 },
+    });
+    if (!optimized.error) return optimized.data.signedUrl;
+    console.warn('Could not create transformed review screenshot URL; using the optimized original:', optimized.error.message);
+  }
+
+  const original = await bucket.createSignedUrl(filePath, 60 * 60);
+  if (original.error) throw new Error(`Review screenshot দেখা যাচ্ছে না: ${original.error.message}`);
+  return original.data.signedUrl;
+}
+
+export async function deleteReviewImage(filePath: string): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .storage
+    .from(REVIEW_IMAGE_BUCKET)
+    .remove([filePath]);
+  if (error) throw new Error(`Review screenshot মুছে ফেলা যায়নি: ${error.message}`);
 }
 
 export async function copyCatalogImageToFolder(

@@ -12,7 +12,6 @@ import FaqSection from './components/FaqSection';
 import OrderSuccessModal from './components/OrderSuccessModal';
 import StickyBottomMobileBar from './components/StickyBottomMobileBar';
 import Footer from './components/Footer';
-import { CUSTOMER_REVIEWS } from './data/shemaiData';
 import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
 import { fetchAllProducts, fetchCombos } from './services/dbService';
 import { useCurrentRoute } from './router';
@@ -165,7 +164,7 @@ export default function App() {
         />
 
         {/* 8. Verified Bangladeshi Customer Reviews & Social Proof */}
-        <CustomerReviews reviews={CUSTOMER_REVIEWS} />
+        <CustomerReviews />
 
         {/* 9. Frequently Asked Questions (FAQ) Accordion */}
         <FaqSection />

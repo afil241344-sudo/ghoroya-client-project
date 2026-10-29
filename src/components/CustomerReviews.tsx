@@ -1,11 +1,134 @@
-import { Star, ShieldCheck, CheckCircle, ThumbsUp, MessageSquare } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Star,
+  ShieldCheck,
+  CheckCircle,
+  ThumbsUp,
+  MessageSquare,
+  ImagePlus,
+  Send,
+  X,
+} from 'lucide-react';
 import { CustomerReview } from '../types';
+import {
+  CustomerReviewSubmission,
+  fetchApprovedCustomerReviews,
+  submitCustomerReview,
+} from '../services/dbService';
+import { uploadReviewImage } from '../services/imageUpload';
 
-interface CustomerReviewsProps {
-  reviews: CustomerReview[];
-}
+export default function CustomerReviews() {
+  const [submittedReviews, setSubmittedReviews] = useState<CustomerReview[]>([]);
+  const [isReviewFormOpen, setIsReviewFormOpen] = useState(false);
+  const [author, setAuthor] = useState('');
+  const [location, setLocation] = useState('');
+  const [orderType, setOrderType] = useState('');
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [screenshot, setScreenshot] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionMessage, setSubmissionMessage] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
 
-export default function CustomerReviews({ reviews }: CustomerReviewsProps) {
+  useEffect(() => {
+    let active = true;
+    fetchApprovedCustomerReviews()
+      .then((records) => {
+        if (!active) return;
+        setSubmittedReviews(records.map((record) => ({
+          id: record.id,
+          author: record.author,
+          location: record.location,
+          rating: record.rating,
+          date: new Date(record.createdAt).toLocaleDateString('bn-BD', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          }),
+          verified: record.verified,
+          comment: record.comment,
+          orderType: record.orderType,
+          screenshotUrl: record.screenshotUrl,
+          screenshotError: record.screenshotError,
+        })));
+      })
+      .catch((error: unknown) => {
+        console.error('Could not load approved customer reviews:', error);
+        if (active) setReviewLoadError(error instanceof Error ? error.message : 'রিভিউ লোড করা যায়নি।');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!screenshot) {
+      setScreenshotPreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(screenshot);
+    setScreenshotPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [screenshot]);
+
+  const visibleReviews = submittedReviews;
+  const averageRating = visibleReviews.length
+    ? visibleReviews.reduce((total, review) => total + review.rating, 0) / visibleReviews.length
+    : 0;
+  const ratingDistribution = Array.from({ length: 5 }, (_, index) => 5 - index).map((value) => {
+    const count = visibleReviews.filter((review) => review.rating === value).length;
+    return { value, count, percentage: visibleReviews.length ? Math.round((count / visibleReviews.length) * 100) : 0 };
+  });
+
+  const handleReviewSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmissionError(null);
+    setSubmissionMessage(null);
+    if (author.trim().length < 2 || comment.trim().length < 10) {
+      setSubmissionError('নাম কমপক্ষে ২ অক্ষর এবং রিভিউ কমপক্ষে ১০ অক্ষরের হতে হবে।');
+      return;
+    }
+    if (screenshot && (!screenshot.type.startsWith('image/') || screenshot.size > 15 * 1024 * 1024)) {
+      setSubmissionError('১৫ MB-এর মধ্যে একটি image screenshot নির্বাচন করুন।');
+      return;
+    }
+
+    setIsSubmitting(true);
+    let screenshotPath: string | null = null;
+    try {
+      if (screenshot) {
+        screenshotPath = await uploadReviewImage(screenshot, crypto.randomUUID());
+      }
+      const submission: CustomerReviewSubmission = {
+        author: author.trim(),
+        location: location.trim(),
+        orderType: orderType.trim(),
+        rating,
+        comment: comment.trim(),
+        screenshotPath,
+      };
+      await submitCustomerReview(submission);
+      setAuthor('');
+      setLocation('');
+      setOrderType('');
+      setRating(5);
+      setComment('');
+      setScreenshot(null);
+      setSubmissionMessage('ধন্যবাদ! আপনার রিভিউটি অনুমোদনের জন্য পাঠানো হয়েছে। অনুমোদনের পর এটি এখানে দেখা যাবে।');
+      setIsReviewFormOpen(false);
+    } catch (error) {
+      if (screenshotPath) {
+        console.error('Review submission failed; its unlinked screenshot remains private in Storage.');
+      }
+      console.error('Could not submit customer review:', error);
+      setSubmissionError(error instanceof Error ? error.message : 'রিভিউ পাঠানো যায়নি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <section id="reviews-section" className="py-12 sm:py-16 bg-[#faf7f0] border-b border-amber-900/10">
       <div className="max-w-6xl mx-auto px-4">
@@ -23,50 +146,212 @@ export default function CustomerReviews({ reviews }: CustomerReviewsProps) {
           </p>
         </div>
 
+        <div className="mb-8 text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setIsReviewFormOpen((open) => !open);
+              setSubmissionError(null);
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800"
+          >
+            <MessageSquare className="h-4 w-4" />
+            আপনার অভিজ্ঞতা লিখুন
+          </button>
+        </div>
+
+        {submissionMessage && (
+          <p role="status" className="mx-auto mb-6 max-w-2xl rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center text-sm text-emerald-800">
+            {submissionMessage}
+          </p>
+        )}
+        {reviewLoadError && (
+          <p role="status" className="mx-auto mb-6 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-xs text-amber-800">
+            নতুন রিভিউ দেখানো যাচ্ছে না। {reviewLoadError}
+          </p>
+        )}
+
+        {isReviewFormOpen && (
+          <form
+            onSubmit={(event) => void handleReviewSubmit(event)}
+            className="mx-auto mb-10 max-w-3xl space-y-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-extrabold text-stone-900">আপনার রিভিউ লিখুন</h3>
+                <p className="mt-1 text-xs text-stone-600">
+                  রিভিউ যাচাই করে অনুমোদনের পর প্রকাশ করা হবে। Screenshot-ও অনুমোদনের আগে private থাকবে।
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsReviewFormOpen(false)}
+                aria-label="রিভিউ ফর্ম বন্ধ করুন"
+                className="rounded-lg p-2 text-stone-500 hover:bg-stone-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs font-bold text-stone-700">
+                আপনার নাম *
+                <input
+                  required
+                  minLength={2}
+                  maxLength={80}
+                  value={author}
+                  onChange={(event) => setAuthor(event.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm font-normal"
+                />
+              </label>
+              <label className="text-xs font-bold text-stone-700">
+                এলাকা (ঐচ্ছিক)
+                <input
+                  maxLength={120}
+                  value={location}
+                  onChange={(event) => setLocation(event.target.value)}
+                  placeholder="যেমন: মিরপুর, ঢাকা"
+                  className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm font-normal"
+                />
+              </label>
+            </div>
+            <label className="block text-xs font-bold text-stone-700">
+              কোন পণ্য নিয়েছেন? (ঐচ্ছিক)
+              <input
+                maxLength={100}
+                value={orderType}
+                onChange={(event) => setOrderType(event.target.value)}
+                placeholder="যেমন: ফ্যামিলি প্যাক"
+                className="mt-1.5 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm font-normal"
+              />
+            </label>
+            <fieldset>
+              <legend className="text-xs font-bold text-stone-700">আপনার রেটিং *</legend>
+              <div className="mt-1 flex items-center gap-1" role="radiogroup" aria-label="রেটিং নির্বাচন করুন">
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={rating === value}
+                    aria-label={`${value} স্টার`}
+                    onClick={() => setRating(value)}
+                    className="rounded p-1 text-amber-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600"
+                  >
+                    <Star className={`h-7 w-7 ${rating >= value ? 'fill-current' : ''}`} />
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <label className="block text-xs font-bold text-stone-700">
+              আপনার অভিজ্ঞতা *
+              <textarea
+                required
+                minLength={10}
+                maxLength={1500}
+                rows={4}
+                value={comment}
+                onChange={(event) => setComment(event.target.value)}
+                placeholder="পণ্য ও ডেলিভারি সম্পর্কে আপনার মতামত লিখুন..."
+                className="mt-1.5 w-full resize-y rounded-lg border border-stone-300 px-3 py-2.5 text-sm font-normal"
+              />
+            </label>
+            <div>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 px-3 py-2.5 text-xs font-bold text-stone-700 hover:bg-stone-50">
+                <ImagePlus className="h-4 w-4 text-emerald-700" />
+                Screenshot / ছবি যোগ করুন (ঐচ্ছিক)
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/avif"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setScreenshot(file);
+                    setSubmissionError(null);
+                    event.target.value = '';
+                  }}
+                  className="sr-only"
+                  aria-label="রিভিউ screenshot নির্বাচন করুন"
+                />
+              </label>
+              {screenshot && (
+                <div className="mt-3 flex items-center gap-3">
+                  {screenshotPreview && (
+                    <img src={screenshotPreview} alt="Screenshot preview" className="h-16 w-16 rounded-lg object-cover" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-xs text-stone-600">{screenshot.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setScreenshot(null)}
+                    className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
+                    aria-label="Screenshot সরান"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              <p className="mt-1.5 text-[11px] text-stone-500">JPEG, PNG, WebP বা AVIF · সর্বোচ্চ ১৫ MB (আপলোডে optimize হবে)</p>
+            </div>
+            {submissionError && (
+              <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                {submissionError}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
+            >
+              <Send className="h-4 w-4" />
+              {isSubmitting ? 'পাঠানো হচ্ছে...' : 'রিভিউ জমা দিন'}
+            </button>
+          </form>
+        )}
+
         {/* Rating Score Summary Card */}
+        {visibleReviews.length > 0 ? (
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-stone-200 mb-10 max-w-4xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center text-center md:text-left">
             <div className="md:border-r border-stone-200 md:pr-6">
-              <span className="text-5xl font-extrabold text-stone-950">৪.৯</span>
+              <span className="text-5xl font-extrabold text-stone-950">
+                {averageRating.toLocaleString('bn-BD', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              </span>
               <div className="flex justify-center md:justify-start text-amber-500 my-2">
                 {[...Array(5)].map((_, i) => (
                   <Star key={i} className="w-5 h-5 fill-current" />
                 ))}
               </div>
               <p className="text-xs text-stone-500">
-                ১২,৪৫০+ ভেরিফায়েড অর্ডারের ভিত্তিতে রেটিং
+                {visibleReviews.length.toLocaleString('bn-BD')}টি প্রকাশিত রিভিউয়ের ভিত্তিতে
               </p>
             </div>
 
             <div className="space-y-1.5 text-xs text-stone-600 md:col-span-2">
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-right font-medium">৫ স্টার</span>
-                <div className="flex-1 bg-stone-100 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-500 h-full rounded-full" style={{ width: '96%' }}></div>
+              {ratingDistribution.map(({ value, count, percentage }) => (
+                <div key={value} className={`flex items-center gap-2 ${count === 0 ? 'text-stone-400' : ''}`}>
+                  <span className="w-12 text-right font-medium">{value.toLocaleString('bn-BD')} স্টার</span>
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-stone-100">
+                    <div
+                      className="h-full rounded-full bg-amber-500"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                  <span className={`w-10 font-bold ${count ? 'text-stone-800' : ''}`}>
+                    {percentage.toLocaleString('bn-BD')}%
+                  </span>
                 </div>
-                <span className="w-10 font-bold text-stone-800">৯৬%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-right font-medium">৪ স্টার</span>
-                <div className="flex-1 bg-stone-100 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-400 h-full rounded-full" style={{ width: '৪%' }}></div>
-                </div>
-                <span className="w-10 font-bold text-stone-800">৪%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-12 text-right font-medium text-stone-400">৩ স্টার</span>
-                <div className="flex-1 bg-stone-100 rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-amber-300 h-full rounded-full" style={{ width: '০%' }}></div>
-                </div>
-                <span className="w-10 font-bold text-stone-400">০%</span>
-              </div>
+              ))}
             </div>
           </div>
         </div>
+        ) : (
+          <div className="mb-8 rounded-2xl border border-dashed border-stone-300 bg-white p-6 text-center text-sm text-stone-600">
+            এখনো কোনো review প্রকাশিত হয়নি। আপনার অভিজ্ঞতা প্রথমে শেয়ার করুন।
+          </div>
+        )}
 
         {/* Customer Review Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {reviews.map((rev) => (
+        {visibleReviews.length > 0 && <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {visibleReviews.map((rev) => (
             <div
               key={rev.id}
               className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-stone-200/90 flex flex-col justify-between hover:shadow-md transition-shadow"
@@ -99,34 +384,53 @@ export default function CustomerReviews({ reviews }: CustomerReviewsProps) {
                       <Star key={i} className="w-4 h-4 fill-current" />
                     ))}
                   </div>
-                  <span className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-medium">
-                    {rev.orderType}
-                  </span>
+                  {rev.orderType && (
+                    <span className="text-xs bg-stone-100 text-stone-700 px-2 py-0.5 rounded font-medium">
+                      {rev.orderType}
+                    </span>
+                  )}
                 </div>
 
                 {/* Review Text */}
                 <p className="text-xs sm:text-sm text-stone-700 leading-relaxed italic">
                   "{rev.comment}"
                 </p>
+                {rev.screenshotUrl && (
+                  <a
+                    href={rev.screenshotUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-emerald-800 hover:underline"
+                  >
+                    <img src={rev.screenshotUrl} alt={`${rev.author}-এর review screenshot`} className="h-12 w-12 rounded-lg border border-stone-200 object-cover" loading="lazy" decoding="async" />
+                    ছবি দেখুন
+                  </a>
+                )}
+                {rev.screenshotError && (
+                  <p role="status" className="mt-2 text-[11px] text-amber-700">
+                    Screenshot দেখা যাচ্ছে না: {rev.screenshotError}
+                  </p>
+                )}
               </div>
 
               {/* Bottom Guarantee micro */}
               <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between text-[11px] text-stone-500">
-                <span className="flex items-center gap-1 text-emerald-700 font-medium">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>ক্যাশ অন ডেলিভারিতে ক্রয়কৃত</span>
-                </span>
-                <span className="text-stone-400">সহমত প্রকাশ করেছেন ১২ জন</span>
+                {rev.verified ? (
+                  <span className="flex items-center gap-1 text-emerald-700 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>ভেরিফায়েড ক্রেতা</span>
+                  </span>
+                ) : <span>গ্রাহকের মতামত</span>}
               </div>
             </div>
           ))}
-        </div>
+        </div>}
 
         {/* Video / Photo Reviews Note */}
         <div className="mt-8 bg-amber-50/80 rounded-xl p-4 border border-amber-200/80 text-center max-w-2xl mx-auto text-xs sm:text-sm text-amber-900">
           <MessageSquare className="w-4 h-4 text-amber-700 mx-auto mb-1 inline mr-1.5" />
           <span>
-            ফেসবুক পেজে আমাদের শত শত কাস্টমার আনবক্সিং ভিডিও ও রিভিউ দেখতে পারেন। প্রতিটি ব্যাচ সর্বোচ্চ মান বজায় রেখে ফ্রেশ ভাজা হয়।
+            আপনার অভিজ্ঞতা শেয়ার করলে অন্য ক্রেতারাও পণ্য সম্পর্কে জানতে পারবেন। রিভিউ প্রকাশের আগে আমাদের টিম যাচাই করে।
           </span>
         </div>
       </div>
