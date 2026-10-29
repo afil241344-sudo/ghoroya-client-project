@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Package,
   ShoppingBag,
@@ -232,6 +232,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
   // Tab State: orders, combos, products, coupons, slider, or settings
   const [activeTab, setActiveTab] = useState<'orders' | 'combos' | 'products' | 'coupons' | 'slider' | 'gallery' | 'settings'>('orders');
+  const [isStorefrontMenuOpen, setIsStorefrontMenuOpen] = useState(false);
+  const storefrontMenuRef = useRef<HTMLDivElement>(null);
 
   // Data states
   const [orders, setOrders] = useState<BackendOrder[]>([]);
@@ -305,6 +307,26 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [isPrintingOrders, setIsPrintingOrders] = useState(false);
+
+  useEffect(() => {
+    if (!isStorefrontMenuOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !storefrontMenuRef.current?.contains(event.target)) {
+        setIsStorefrontMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsStorefrontMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isStorefrontMenuOpen]);
 
   const showToast = (msg: string) => {
     setNotification(msg);
@@ -1442,6 +1464,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             </button>
 
             <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className={`flex h-10 w-10 items-center justify-center rounded-lg transition-colors ${
+                activeTab === 'settings'
+                  ? 'bg-emerald-50 text-emerald-800'
+                  : 'text-stone-600 hover:bg-stone-100 hover:text-stone-900'
+              }`}
+              title="সেটিংস"
+              aria-label="সেটিংস"
+              aria-current={activeTab === 'settings' ? 'page' : undefined}
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+
+            <button
               onClick={() => {
                 void getSupabaseClient().auth.signOut().then(({ error }) => {
                   if (error) showToast(error.message);
@@ -1529,8 +1566,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
           </div>
         </div>
 
-        {/* Tab Controls: Orders | Combos | Products | Coupons | Slider | Settings */}
-        <div className="grid grid-cols-4 overflow-hidden rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-auto sm:px-4">
+        {/* Tab Controls: Orders | Combos | Products | Coupons | Storefront */}
+        <div className="grid grid-cols-3 overflow-visible rounded-t-xl border-b border-stone-200 bg-white pt-2 sm:flex sm:overflow-x-visible sm:px-4">
           {/* Tab 1: Orders */}
           <button
             onClick={() => setActiveTab('orders')}
@@ -1588,41 +1625,69 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
             <span className="truncate sm:whitespace-nowrap">কুপন ({coupons.length})</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('slider')}
-            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
-              activeTab === 'slider'
-                ? 'border-emerald-700 text-emerald-800'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            <span className="truncate sm:whitespace-nowrap">স্লাইডার ({sliderImages.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('gallery')}
-            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
-              activeTab === 'gallery'
-                ? 'border-emerald-700 text-emerald-800'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            <ImageIcon className="w-4 h-4" />
-            <span className="truncate sm:whitespace-nowrap">ছবি কার্ড ({homepageImageCards.length})</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
-              activeTab === 'settings'
-                ? 'border-emerald-700 text-emerald-800'
-                : 'border-transparent text-stone-500 hover:text-stone-800'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            <span className="truncate sm:whitespace-nowrap">সেটিংস</span>
-          </button>
+          <div ref={storefrontMenuRef} className="relative flex min-w-0 justify-center sm:justify-start">
+            <button
+              type="button"
+              onClick={() => setIsStorefrontMenuOpen((isOpen) => !isOpen)}
+              aria-expanded={isStorefrontMenuOpen}
+              aria-haspopup="menu"
+              className={`flex min-w-0 items-center justify-center gap-1 border-b-2 px-1 py-3 text-[11px] font-bold transition-all sm:justify-start sm:gap-2 sm:px-4 sm:text-sm ${
+                activeTab === 'slider' || activeTab === 'gallery'
+                  ? 'border-emerald-700 text-emerald-800'
+                  : 'border-transparent text-stone-500 hover:text-stone-800'
+              }`}
+            >
+              <ImageIcon className="h-4 w-4 shrink-0" />
+              <span className="truncate sm:whitespace-nowrap">স্টোরফ্রন্ট</span>
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${isStorefrontMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isStorefrontMenuOpen && (
+              <div
+                role="menu"
+                aria-label="স্টোরফ্রন্ট ম্যানেজমেন্ট"
+                className="absolute right-0 top-full z-40 mt-1 w-52 overflow-hidden rounded-xl border border-stone-200 bg-white p-1.5 shadow-xl sm:left-0 sm:right-auto"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTab('slider');
+                    setIsStorefrontMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors ${
+                    activeTab === 'slider'
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    স্লাইডার
+                  </span>
+                  <span className="text-[11px] text-stone-500">{sliderImages.length}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActiveTab('gallery');
+                    setIsStorefrontMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors ${
+                    activeTab === 'gallery'
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'text-stone-700 hover:bg-stone-50'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <ImageIcon className="h-4 w-4" />
+                    ছবি কার্ড
+                  </span>
+                  <span className="text-[11px] text-stone-500">{homepageImageCards.length}</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* TAB 1: ORDERS MANAGEMENT */}
