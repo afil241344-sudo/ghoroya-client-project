@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, RefreshCw, ShoppingBag } from 'lucide-react';
 import { ProductItem } from '../types';
 import { fetchAllProducts } from '../services/dbService';
@@ -12,15 +12,19 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const hasLoadedProducts = useRef(false);
 
   const refreshProducts = useCallback(async (isActive: () => boolean = () => true) => {
     if (isActive()) {
-      setIsLoading(true);
+      if (!hasLoadedProducts.current) setIsLoading(true);
       setLoadError(null);
     }
     try {
       const loadedProducts = await fetchAllProducts();
-      if (isActive()) setProducts(loadedProducts);
+      if (isActive()) {
+        setProducts(loadedProducts);
+        hasLoadedProducts.current = true;
+      }
     } catch (error: unknown) {
       console.error('Could not fetch products from Supabase:', error);
       if (isActive()) {
@@ -99,7 +103,7 @@ export default function ProductCarousel({ onSelectProduct }: ProductCarouselProp
               >
                 <div className="aspect-square overflow-hidden bg-stone-100">
                   {product.imageUrl ? (
-                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" loading="lazy" />
+                    <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-stone-400" aria-label="ছবি নেই">
                       <ImageIcon className="h-10 w-10" />

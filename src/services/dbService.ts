@@ -96,13 +96,48 @@ function throwOnError(error: { message: string } | null): void {
   if (error) throw new Error(error.message);
 }
 
+const READ_CACHE_TTL_MS = 15_000;
+const readCache = new Map<string, { expiresAt: number; promise: Promise<unknown> }>();
+
+function cachedRead<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+  const cached = readCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise as Promise<T>;
+  }
+
+  const entry: { expiresAt: number; promise: Promise<unknown> } = {
+    expiresAt: Number.POSITIVE_INFINITY,
+    promise: Promise.resolve(),
+  };
+  entry.promise = fetcher().then(
+    (value) => {
+      if (readCache.get(key) === entry) {
+        entry.expiresAt = Date.now() + READ_CACHE_TTL_MS;
+      }
+      return value;
+    },
+    (error: unknown) => {
+      if (readCache.get(key) === entry) readCache.delete(key);
+      throw error;
+    },
+  );
+  readCache.set(key, entry);
+  return entry.promise as Promise<T>;
+}
+
+function invalidateReadCache(...keys: string[]): void {
+  keys.forEach((key) => readCache.delete(key));
+}
+
 export async function fetchCombos(): Promise<BackendCombo[]> {
-  const { data, error } = await getSupabaseClient()
-    .from(COMBOS_TABLE)
-    .select('*')
-    .order('id');
-  throwOnError(error);
-  return (data ?? []).map((row) => fromDatabaseRow<BackendCombo>(row));
+  return cachedRead('combos', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(COMBOS_TABLE)
+      .select('*')
+      .order('id');
+    throwOnError(error);
+    return (data ?? []).map((row) => fromDatabaseRow<BackendCombo>(row));
+  });
 }
 
 export async function createCombo(combo: BackendCombo): Promise<BackendCombo> {
@@ -113,6 +148,7 @@ export async function createCombo(combo: BackendCombo): Promise<BackendCombo> {
     .single();
   throwOnError(error);
   if (!data) throw new Error('Supabase did not return the created combo.');
+  invalidateReadCache('combos');
   return fromDatabaseRow<BackendCombo>(data);
 }
 
@@ -125,6 +161,7 @@ export async function updateCombo(
     .update(toDatabaseRow(updates))
     .eq('id', comboId);
   throwOnError(error);
+  invalidateReadCache('combos');
 }
 
 export async function deleteCombo(comboId: string): Promise<void> {
@@ -136,15 +173,18 @@ export async function deleteCombo(comboId: string): Promise<void> {
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Combo was not deleted. Check admin permissions.');
+  invalidateReadCache('combos');
 }
 
 export async function fetchAllProducts(): Promise<ProductItem[]> {
-  const { data, error } = await getSupabaseClient()
-    .from(PRODUCTS_TABLE)
-    .select('*')
-    .order('id');
-  throwOnError(error);
-  return (data ?? []).map((row) => fromDatabaseRow<ProductItem>(row));
+  return cachedRead('products', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(PRODUCTS_TABLE)
+      .select('*')
+      .order('id');
+    throwOnError(error);
+    return (data ?? []).map((row) => fromDatabaseRow<ProductItem>(row));
+  });
 }
 
 export async function createProductItem(
@@ -162,6 +202,7 @@ export async function createProductItem(
     .single();
   throwOnError(error);
   if (!data) throw new Error('Supabase did not return the created product.');
+  invalidateReadCache('products');
   return fromDatabaseRow<ProductItem>(data);
 }
 
@@ -174,6 +215,7 @@ export async function updateProductItem(
     .update(toDatabaseRow(updates))
     .eq('id', productId);
   throwOnError(error);
+  invalidateReadCache('products');
 }
 
 export async function deleteProductItem(productId: string): Promise<void> {
@@ -182,27 +224,32 @@ export async function deleteProductItem(productId: string): Promise<void> {
     .delete()
     .eq('id', productId);
   throwOnError(error);
+  invalidateReadCache('products');
 }
 
 export async function fetchActiveCoupons(): Promise<DBCoupon[]> {
-  const { data, error } = await getSupabaseClient()
-    .from(COUPONS_TABLE)
-    .select('*')
-    .eq('is_active', true)
-    .order('code');
-  throwOnError(error);
-  if (!data) throw new Error('Supabase returned no coupon records.');
-  return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+  return cachedRead('active-coupons', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(COUPONS_TABLE)
+      .select('*')
+      .eq('is_active', true)
+      .order('code');
+    throwOnError(error);
+    if (!data) throw new Error('Supabase returned no coupon records.');
+    return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+  });
 }
 
 export async function fetchAllCoupons(): Promise<DBCoupon[]> {
-  const { data, error } = await getSupabaseClient()
-    .from(COUPONS_TABLE)
-    .select('*')
-    .order('code');
-  throwOnError(error);
-  if (!data) throw new Error('Supabase returned no coupon records.');
-  return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+  return cachedRead('all-coupons', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(COUPONS_TABLE)
+      .select('*')
+      .order('code');
+    throwOnError(error);
+    if (!data) throw new Error('Supabase returned no coupon records.');
+    return data.map((row) => fromDatabaseRow<DBCoupon>(row));
+  });
 }
 
 export async function createCoupon(
@@ -215,6 +262,7 @@ export async function createCoupon(
     .single();
   throwOnError(error);
   if (!data) throw new Error('Supabase did not return the created coupon.');
+  invalidateReadCache('active-coupons', 'all-coupons');
   return fromDatabaseRow<DBCoupon>(data);
 }
 
@@ -228,6 +276,7 @@ export async function updateCoupon(
     .update(toDatabaseRow(allowedUpdates))
     .eq('id', couponId);
   throwOnError(error);
+  invalidateReadCache('active-coupons', 'all-coupons');
 }
 
 export async function deleteCoupon(couponId: string): Promise<void> {
@@ -236,17 +285,20 @@ export async function deleteCoupon(couponId: string): Promise<void> {
     .delete()
     .eq('id', couponId);
   throwOnError(error);
+  invalidateReadCache('active-coupons', 'all-coupons');
 }
 
 export async function fetchDeliverySettings(): Promise<StoreDeliverySettings> {
-  const { data, error } = await getSupabaseClient()
-    .from(STORE_SETTINGS_TABLE)
-    .select('dhaka_delivery_fee, outside_dhaka_delivery_fee')
-    .eq('id', 'default')
-    .single();
-  throwOnError(error);
-  if (!data) throw new Error('Supabase returned no delivery settings.');
-  return fromDatabaseRow<StoreDeliverySettings>(data);
+  return cachedRead('delivery-settings', async () => {
+    const { data, error } = await getSupabaseClient()
+      .from(STORE_SETTINGS_TABLE)
+      .select('dhaka_delivery_fee, outside_dhaka_delivery_fee')
+      .eq('id', 'default')
+      .single();
+    throwOnError(error);
+    if (!data) throw new Error('Supabase returned no delivery settings.');
+    return fromDatabaseRow<StoreDeliverySettings>(data);
+  });
 }
 
 export async function updateDeliverySettings(
@@ -260,19 +312,22 @@ export async function updateDeliverySettings(
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Delivery settings were not updated. Check admin permissions.');
+  invalidateReadCache('delivery-settings');
 }
 
 export async function fetchSliderImages(activeOnly = false): Promise<SliderImage[]> {
-  let query = getSupabaseClient()
-    .from(SLIDER_IMAGES_TABLE)
-    .select('*')
-    .order('sort_order')
-    .order('created_at');
-  if (activeOnly) query = query.eq('is_active', true);
-  const { data, error } = await query;
-  throwOnError(error);
-  if (!data) throw new Error('Supabase returned no slider image records.');
-  return data.map((row) => fromDatabaseRow<SliderImage>(row));
+  return cachedRead(`slider-images-${activeOnly}`, async () => {
+    let query = getSupabaseClient()
+      .from(SLIDER_IMAGES_TABLE)
+      .select('*')
+      .order('sort_order')
+      .order('created_at');
+    if (activeOnly) query = query.eq('is_active', true);
+    const { data, error } = await query;
+    throwOnError(error);
+    if (!data) throw new Error('Supabase returned no slider image records.');
+    return data.map((row) => fromDatabaseRow<SliderImage>(row));
+  });
 }
 
 export async function createSliderImage(
@@ -285,6 +340,7 @@ export async function createSliderImage(
     .single();
   throwOnError(error);
   if (!data) throw new Error('Supabase did not return the created slider image.');
+  invalidateReadCache('slider-images-true', 'slider-images-false');
   return fromDatabaseRow<SliderImage>(data);
 }
 
@@ -300,6 +356,7 @@ export async function updateSliderImage(
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Slider image was not updated. Check admin permissions.');
+  invalidateReadCache('slider-images-true', 'slider-images-false');
 }
 
 export async function deleteSliderImage(imageId: string): Promise<void> {
@@ -311,18 +368,21 @@ export async function deleteSliderImage(imageId: string): Promise<void> {
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Slider image was not deleted. Check admin permissions.');
+  invalidateReadCache('slider-images-true', 'slider-images-false');
 }
 
 export async function fetchHomepageImageCards(activeOnly = false): Promise<HomepageImageCard[]> {
-  let query = getSupabaseClient()
-    .from(HOMEPAGE_IMAGE_CARDS_TABLE)
-    .select('*')
-    .order('sort_order')
-    .order('created_at');
-  if (activeOnly) query = query.eq('is_active', true);
-  const { data, error } = await query;
-  throwOnError(error);
-  return (data ?? []).map((row) => fromDatabaseRow<HomepageImageCard>(row));
+  return cachedRead(`homepage-image-cards-${activeOnly}`, async () => {
+    let query = getSupabaseClient()
+      .from(HOMEPAGE_IMAGE_CARDS_TABLE)
+      .select('*')
+      .order('sort_order')
+      .order('created_at');
+    if (activeOnly) query = query.eq('is_active', true);
+    const { data, error } = await query;
+    throwOnError(error);
+    return (data ?? []).map((row) => fromDatabaseRow<HomepageImageCard>(row));
+  });
 }
 
 export async function createHomepageImageCards(
@@ -335,6 +395,7 @@ export async function createHomepageImageCards(
     .select();
   throwOnError(error);
   if (!data) throw new Error('Supabase did not return the created homepage image cards.');
+  invalidateReadCache('homepage-image-cards-true', 'homepage-image-cards-false');
   return data.map((row) => fromDatabaseRow<HomepageImageCard>(row));
 }
 
@@ -350,6 +411,7 @@ export async function updateHomepageImageCard(
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Homepage image card was not updated. Check admin permissions.');
+  invalidateReadCache('homepage-image-cards-true', 'homepage-image-cards-false');
 }
 
 export async function deleteHomepageImageCard(imageId: string): Promise<void> {
@@ -361,6 +423,7 @@ export async function deleteHomepageImageCard(imageId: string): Promise<void> {
     .maybeSingle();
   throwOnError(error);
   if (!data) throw new Error('Homepage image card was not deleted. Check admin permissions.');
+  invalidateReadCache('homepage-image-cards-true', 'homepage-image-cards-false');
 }
 
 export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<BackendOrder> {
@@ -404,6 +467,7 @@ export async function saveOrderToSupabase(placedOrder: PlacedOrder): Promise<Bac
     throw new Error(error.message);
   }
   if (!data) throw new Error('Supabase did not return the created order.');
+  invalidateReadCache('combos', 'products');
   return fromDatabaseRow<BackendOrder>(data as Record<string, unknown>);
 }
 

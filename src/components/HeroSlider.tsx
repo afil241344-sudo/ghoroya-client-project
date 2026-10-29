@@ -139,6 +139,8 @@ export default function HeroSlider() {
                   alt={img.alt}
                   className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-102"
                   loading={idx === 0 ? 'eager' : 'lazy'}
+                  fetchPriority={idx === 0 ? 'high' : 'auto'}
+                  decoding="async"
                   draggable={false}
                 />
               </div>

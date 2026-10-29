@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import HeaderAnnouncement from './components/HeaderAnnouncement';
 import HeroSlider from './components/HeroSlider';
 import HomepageImageCards from './components/HomepageImageCards';
@@ -12,11 +12,12 @@ import FaqSection from './components/FaqSection';
 import OrderSuccessModal from './components/OrderSuccessModal';
 import StickyBottomMobileBar from './components/StickyBottomMobileBar';
 import Footer from './components/Footer';
-import AdminDashboard from './components/AdminDashboard';
 import { CUSTOMER_REVIEWS } from './data/shemaiData';
 import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
 import { fetchAllProducts, fetchCombos } from './services/dbService';
 import { useCurrentRoute } from './router';
+
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 function productToBundle(product: ProductItem): ShemaiBundle {
   return {
@@ -47,6 +48,7 @@ export default function App() {
   const [comboRetryKey, setComboRetryKey] = useState(0);
 
   useEffect(() => {
+    if (currentRoute !== 'store') return;
     let active = true;
     setIsLoadingCombos(true);
     setCatalogError(null);
@@ -116,7 +118,9 @@ export default function App() {
   // Dedicated Separate Page for Admin Dashboard (/admin)
   if (currentRoute === 'admin') {
     return (
-      <AdminDashboard onNavigateToStore={() => navigateToRoute('store')} />
+      <Suspense fallback={<div className="min-h-screen bg-[#fbf9f4]" role="status" aria-label="অ্যাডমিন প্যানেল লোড হচ্ছে" />}>
+        <AdminDashboard onNavigateToStore={() => navigateToRoute('store')} />
+      </Suspense>
     );
   }
 

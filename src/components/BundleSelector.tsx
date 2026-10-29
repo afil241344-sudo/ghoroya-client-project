@@ -126,6 +126,7 @@ export default function BundleSelector({
                         alt={bundle.name}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-stone-400" aria-label="ছবি নেই">
