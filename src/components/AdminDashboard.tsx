@@ -41,7 +41,6 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import ImageUploadField from './ImageUploadField';
 import SliderImageUploadField from './SliderImageUploadField';
 import GalleryImagePicker, { GalleryImageOption } from './GalleryImagePicker';
 import heroBowlImage from '../assets/images/shemai_hero_bowl_1793156337325.jpg';
@@ -83,7 +82,12 @@ import {
   ProductItem,
 } from '../services/dbService';
 import { DBCoupon } from '../types';
-import { copyCatalogImageToGallery, deleteCatalogImage, uploadCatalogImage } from '../services/imageUpload';
+import {
+  copyCatalogImageToFolder,
+  copyCatalogImageToGallery,
+  deleteCatalogImage,
+  uploadCatalogImage,
+} from '../services/imageUpload';
 import { getSupabaseClient } from '../lib/supabase';
 
 function isOrderStatus(status: string): status is BackendOrder['status'] {
@@ -278,8 +282,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   const [editingProduct, setEditingProduct] = useState<ProductItem | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [comboImageFile, setComboImageFile] = useState<File | null>(null);
+  const [comboSelectedImageUrl, setComboSelectedImageUrl] = useState<string | null>(null);
   const [newProductImageFile, setNewProductImageFile] = useState<File | null>(null);
+  const [newProductSelectedImageUrl, setNewProductSelectedImageUrl] = useState<string | null>(null);
   const [editingProductImageFile, setEditingProductImageFile] = useState<File | null>(null);
+  const [editingProductSelectedImageUrl, setEditingProductSelectedImageUrl] = useState<string | null>(null);
   const [isSavingCatalogItem, setIsSavingCatalogItem] = useState(false);
   const [newProductForm, setNewProductForm] = useState<Omit<ProductItem, 'id'>>({
     name: '',
@@ -308,6 +315,31 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     setSliderImageFile(file);
     setIsSliderImageValid(isValid);
   }, []);
+
+  const galleryImageOptions: GalleryImageOption[] = ([
+    { label: 'আগের হোমপেজ ছবি · সেমাই বোল', imageUrl: heroBowlImage, category: 'homepage' },
+    { label: 'আগের হোমপেজ ছবি · প্যাকেজিং বক্স', imageUrl: packagingBoxImage, category: 'homepage' },
+    { label: 'আগের হোমপেজ ছবি · তৈরি সেমাই', imageUrl: preparedDishImage, category: 'homepage' },
+    ...homepageImageCards.map((card) => ({
+      label: `আগের gallery ছবি · ${card.altText}`,
+      imageUrl: card.imageUrl,
+      category: 'gallery' as const,
+    })),
+    ...productsList.flatMap((product) => product.imageUrl
+      ? [{ label: `প্রোডাক্ট · ${product.name}`, imageUrl: product.imageUrl, category: 'product' as const }]
+      : []),
+    ...combos.flatMap((combo) => combo.imageUrl
+      ? [{ label: `কম্বো · ${combo.name}`, imageUrl: combo.imageUrl, category: 'combo' as const }]
+      : []),
+    ...sliderImages.map((slide) => ({
+      label: `স্লাইডার · ${slide.title}`,
+      imageUrl: slide.imageUrl,
+      category: 'slider' as const,
+    })),
+  ] as GalleryImageOption[]).map((option) => ({ ...option, id: option.imageUrl }))
+    .filter((option, index, options) => (
+      options.findIndex((candidate) => candidate.imageUrl === option.imageUrl) === index
+    ));
 
   const loadData = async () => {
     setIsRefreshing(true);
@@ -485,6 +517,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
   const openNewComboForm = () => {
     setComboImageFile(null);
+    setComboSelectedImageUrl(null);
     setIsCreatingCombo(true);
     setEditingCombo({
       id: crypto.randomUUID(),
@@ -522,6 +555,12 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     try {
       if (comboImageFile) {
         uploadedImageUrl = await uploadCatalogImage(comboImageFile, 'combos', editingCombo.id);
+      } else if (comboSelectedImageUrl) {
+        uploadedImageUrl = await copyCatalogImageToFolder(
+          comboSelectedImageUrl,
+          'combos',
+          editingCombo.id,
+        );
       }
       const combo: BackendCombo = {
         ...editingCombo,
@@ -548,6 +587,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       setEditingCombo(null);
       setIsCreatingCombo(false);
       setComboImageFile(null);
+      setComboSelectedImageUrl(null);
       if (uploadedImageUrl && previousImageUrl && previousImageUrl !== uploadedImageUrl) {
         try {
           await deleteCatalogImage(previousImageUrl);
@@ -599,13 +639,17 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
     try {
       setIsSavingCatalogItem(true);
+      const newImageId = `prod-${Date.now()}`;
       const imageUrl = newProductImageFile
-        ? await uploadCatalogImage(newProductImageFile, 'products', `prod-${Date.now()}`)
-        : undefined;
+        ? await uploadCatalogImage(newProductImageFile, 'products', newImageId)
+        : newProductSelectedImageUrl
+          ? await copyCatalogImageToFolder(newProductSelectedImageUrl, 'products', newImageId)
+          : undefined;
       const created = await createProductItem({ ...newProductForm, imageUrl });
       setProductsList((prev) => [created, ...prev]);
       setIsAddingProduct(false);
       setNewProductImageFile(null);
+      setNewProductSelectedImageUrl(null);
       setNewProductForm({
         name: '',
         sku: '',
@@ -634,7 +678,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     try {
       const imageUrl = editingProductImageFile
         ? await uploadCatalogImage(editingProductImageFile, 'products', editingProduct.id)
-        : editingProduct.imageUrl;
+        : editingProductSelectedImageUrl
+          ? await copyCatalogImageToFolder(
+            editingProductSelectedImageUrl,
+            'products',
+            editingProduct.id,
+          )
+          : editingProduct.imageUrl;
       const updatedProduct = { ...editingProduct, imageUrl };
       await updateProductItem(editingProduct.id, {
         name: editingProduct.name,
@@ -654,6 +704,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       );
       setEditingProduct(null);
       setEditingProductImageFile(null);
+      setEditingProductSelectedImageUrl(null);
       showToast(`প্রোডাক্ট '${editingProduct.name}' ডাটাবেসে সফলভাবে আপডেট হয়েছে!`);
     } catch (err) {
       console.error('Error saving product image or details:', err);
@@ -870,31 +921,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       showToast(error instanceof Error ? error.message : 'Slider order আপডেট করা যায়নি।');
     }
   };
-
-  const galleryImageOptions: GalleryImageOption[] = ([
-    { label: 'আগের হোমপেজ ছবি · সেমাই বোল', imageUrl: heroBowlImage, category: 'homepage' },
-    { label: 'আগের হোমপেজ ছবি · প্যাকেজিং বক্স', imageUrl: packagingBoxImage, category: 'homepage' },
-    { label: 'আগের হোমপেজ ছবি · তৈরি সেমাই', imageUrl: preparedDishImage, category: 'homepage' },
-    ...homepageImageCards.map((card) => ({
-      label: `আগের gallery ছবি · ${card.altText}`,
-      imageUrl: card.imageUrl,
-      category: 'gallery' as const,
-    })),
-    ...productsList.flatMap((product) => product.imageUrl
-      ? [{ label: `প্রোডাক্ট · ${product.name}`, imageUrl: product.imageUrl, category: 'product' as const }]
-      : []),
-    ...combos.flatMap((combo) => combo.imageUrl
-      ? [{ label: `কম্বো · ${combo.name}`, imageUrl: combo.imageUrl, category: 'combo' as const }]
-      : []),
-    ...sliderImages.map((slide) => ({
-      label: `স্লাইডার · ${slide.title}`,
-      imageUrl: slide.imageUrl,
-      category: 'slider' as const,
-    })),
-  ] as GalleryImageOption[]).map((option) => ({ ...option, id: option.imageUrl }))
-    .filter((option, index, options) => (
-      options.findIndex((candidate) => candidate.imageUrl === option.imageUrl) === index
-    ));
 
   const closeGalleryForm = () => {
     setIsGalleryFormOpen(false);
@@ -2413,6 +2439,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       <button
                         onClick={() => {
                           setComboImageFile(null);
+                          setComboSelectedImageUrl(null);
                           setIsCreatingCombo(false);
                           setEditingCombo({ ...combo });
                         }}
@@ -2452,9 +2479,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleSaveCombo} className="space-y-4">
-                    <ImageUploadField
+                    <GalleryImagePicker
+                      availableSlots={1}
+                      existingImages={galleryImageOptions}
+                      selectedFiles={comboImageFile ? [comboImageFile] : []}
+                      selectedImageUrls={comboSelectedImageUrl ? [comboSelectedImageUrl] : []}
                       currentImageUrl={editingCombo.imageUrl}
-                      onFileChange={setComboImageFile}
+                      multipleSelection={false}
+                      onFilesChange={(files) => {
+                        setComboImageFile(files[0] ?? null);
+                        if (files.length) setComboSelectedImageUrl(null);
+                      }}
+                      onImageUrlsChange={(urls) => {
+                        setComboSelectedImageUrl(urls[0] ?? null);
+                        if (urls.length) setComboImageFile(null);
+                      }}
                     />
                     <label className="block text-xs font-bold text-stone-700">
                       কম্বোর নাম
@@ -2659,6 +2698,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                           setEditingCombo(null);
                           setIsCreatingCombo(false);
                           setComboImageFile(null);
+                          setComboSelectedImageUrl(null);
                         }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >
@@ -2706,6 +2746,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                 type="button"
                 onClick={() => {
                   setNewProductImageFile(null);
+                  setNewProductSelectedImageUrl(null);
                   setIsAddingProduct(true);
                 }}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm cursor-pointer transition-all self-start sm:self-auto"
@@ -2762,6 +2803,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         type="button"
                         onClick={() => {
                           setEditingProductImageFile(null);
+                          setEditingProductSelectedImageUrl(null);
                           setEditingProduct({ ...product });
                         }}
                         className="rounded-lg p-2 text-stone-600 hover:bg-white"
@@ -2886,6 +2928,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                           <button
                             onClick={() => {
                               setEditingProductImageFile(null);
+                              setEditingProductSelectedImageUrl(null);
                               setEditingProduct({ ...prod });
                             }}
                             className="inline-flex p-1.5 text-stone-600 hover:text-emerald-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
@@ -2927,7 +2970,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleCreateProduct} className="space-y-3">
-                    <ImageUploadField onFileChange={setNewProductImageFile} />
+                    <GalleryImagePicker
+                      availableSlots={1}
+                      existingImages={galleryImageOptions}
+                      selectedFiles={newProductImageFile ? [newProductImageFile] : []}
+                      selectedImageUrls={newProductSelectedImageUrl ? [newProductSelectedImageUrl] : []}
+                      multipleSelection={false}
+                      onFilesChange={(files) => {
+                        setNewProductImageFile(files[0] ?? null);
+                        if (files.length) setNewProductSelectedImageUrl(null);
+                      }}
+                      onImageUrlsChange={(urls) => {
+                        setNewProductSelectedImageUrl(urls[0] ?? null);
+                        if (urls.length) setNewProductImageFile(null);
+                      }}
+                    />
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
                         প্রোডাক্টের নাম * :
@@ -3088,6 +3145,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         onClick={() => {
                           setIsAddingProduct(false);
                           setNewProductImageFile(null);
+                          setNewProductSelectedImageUrl(null);
                         }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >
@@ -3124,9 +3182,21 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </p>
 
                   <form onSubmit={handleSaveSingleProduct} className="space-y-3">
-                    <ImageUploadField
+                    <GalleryImagePicker
+                      availableSlots={1}
+                      existingImages={galleryImageOptions}
+                      selectedFiles={editingProductImageFile ? [editingProductImageFile] : []}
+                      selectedImageUrls={editingProductSelectedImageUrl ? [editingProductSelectedImageUrl] : []}
                       currentImageUrl={editingProduct.imageUrl}
-                      onFileChange={setEditingProductImageFile}
+                      multipleSelection={false}
+                      onFilesChange={(files) => {
+                        setEditingProductImageFile(files[0] ?? null);
+                        if (files.length) setEditingProductSelectedImageUrl(null);
+                      }}
+                      onImageUrlsChange={(urls) => {
+                        setEditingProductSelectedImageUrl(urls[0] ?? null);
+                        if (urls.length) setEditingProductImageFile(null);
+                      }}
                     />
                     <div>
                       <label className="block text-xs font-bold text-stone-700 mb-1">
@@ -3266,6 +3336,7 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         onClick={() => {
                           setEditingProduct(null);
                           setEditingProductImageFile(null);
+                          setEditingProductSelectedImageUrl(null);
                         }}
                         className="flex-1 bg-stone-100 hover:bg-stone-200 text-stone-700 py-2.5 rounded-xl font-bold text-xs cursor-pointer"
                       >

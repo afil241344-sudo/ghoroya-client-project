@@ -16,6 +16,8 @@ interface GalleryImagePickerProps {
   existingImages: GalleryImageOption[];
   selectedFiles: File[];
   selectedImageUrls: string[];
+  currentImageUrl?: string;
+  multipleSelection?: boolean;
   onFilesChange: (files: File[]) => void;
   onImageUrlsChange: (imageUrls: string[]) => void;
 }
@@ -29,6 +31,8 @@ export default function GalleryImagePicker({
   existingImages,
   selectedFiles,
   selectedImageUrls,
+  currentImageUrl,
+  multipleSelection = true,
   onFilesChange,
   onImageUrlsChange,
 }: GalleryImagePickerProps) {
@@ -63,11 +67,15 @@ export default function GalleryImagePicker({
     setFileError(null);
     const addedFiles: File[] = [];
     const errors: string[] = [];
-    const remainingSlots = Math.max(0, availableSlots - selectedImageUrls.length - selectedFiles.length);
+    const remainingSlots = multipleSelection
+      ? Math.max(0, availableSlots - selectedImageUrls.length - selectedFiles.length)
+      : 1;
 
     for (const file of Array.from(files)) {
       if (addedFiles.length >= remainingSlots) {
-        errors.push(`একসাথে সর্বোচ্চ ${availableSlots}টি card রাখা যাবে।`);
+        errors.push(multipleSelection
+          ? `একসাথে সর্বোচ্চ ${availableSlots}টি ছবি রাখা যাবে।`
+          : 'একটি করে ছবি নির্বাচন করুন।');
         break;
       }
       if (!ACCEPTED_TYPES.has(file.type)) {
@@ -96,7 +104,10 @@ export default function GalleryImagePicker({
       }
     }
 
-    if (addedFiles.length) onFilesChange([...selectedFiles, ...addedFiles]);
+    if (addedFiles.length) {
+      if (!multipleSelection) onImageUrlsChange([]);
+      onFilesChange(multipleSelection ? [...selectedFiles, ...addedFiles] : addedFiles);
+    }
     if (errors.length) setFileError(errors.join(' '));
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -106,8 +117,13 @@ export default function GalleryImagePicker({
       onImageUrlsChange(selectedImageUrls.filter((url) => url !== imageUrl));
       return;
     }
+    if (!multipleSelection) {
+      onFilesChange([]);
+      onImageUrlsChange([imageUrl]);
+      return;
+    }
     if (selectedImageUrls.length + selectedFiles.length >= availableSlots) {
-      setFileError(`একসাথে সর্বোচ্চ ${availableSlots}টি image card রাখা যাবে।`);
+      setFileError(`একসাথে সর্বোচ্চ ${availableSlots}টি ছবি রাখা যাবে।`);
       return;
     }
     setFileError(null);
@@ -145,7 +161,7 @@ export default function GalleryImagePicker({
             <input
               ref={fileInputRef}
               type="file"
-              multiple
+              multiple={multipleSelection}
               accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
               onChange={(event) => void selectFiles(event.target.files)}
               className="sr-only"
@@ -154,20 +170,36 @@ export default function GalleryImagePicker({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={selectedFiles.length + selectedImageUrls.length >= availableSlots}
+              disabled={multipleSelection && selectedFiles.length + selectedImageUrls.length >= availableSlots}
               className="group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50 px-4 py-8 text-center transition hover:border-emerald-500 hover:bg-emerald-50/50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm transition group-hover:scale-105">
                 <ImagePlus className="h-6 w-6" />
               </span>
               <span className="mt-3 text-sm font-bold text-stone-800">ছবি বেছে নিতে এখানে click করুন</span>
-              <span className="mt-1 text-xs text-stone-500">একসাথে একাধিক ছবি নির্বাচন করা যাবে</span>
+              <span className="mt-1 text-xs text-stone-500">
+                {multipleSelection ? 'একসাথে একাধিক ছবি নির্বাচন করা যাবে' : 'একটি ছবি নির্বাচন করুন'}
+              </span>
             </button>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500">
               <span>Recommended: 1200 × 1200 px · Minimum: 600 × 600 px</span>
               <span>সর্বোচ্চ 5 MB · {selectedFiles.length + selectedImageUrls.length}/{availableSlots} নির্বাচিত</span>
             </div>
-            <p className="mt-1 text-[11px] text-stone-500">Card square দেখাবে; rectangle ছবি মাঝখান থেকে crop হতে পারে।</p>
+            <p className="mt-1 text-[11px] text-stone-500">ছবির display অনুযায়ী rectangle ছবির কিছু অংশ crop হতে পারে।</p>
+            {filePreviews.length === 0 && (selectedImageUrls[0] || currentImageUrl) && (
+              <div className="mt-4 flex items-center gap-3 rounded-xl border border-stone-200 p-2.5">
+                <img
+                  src={selectedImageUrls[0] || currentImageUrl}
+                  alt="নির্বাচিত ছবির প্রিভিউ"
+                  className="h-16 w-16 rounded-lg bg-stone-100 object-cover"
+                />
+                <span className="truncate text-xs font-medium text-stone-600">
+                  {selectedImageUrls[0]
+                    ? existingImages.find((image) => image.imageUrl === selectedImageUrls[0])?.label ?? 'নির্বাচিত ছবি'
+                    : 'বর্তমান ছবি'}
+                </span>
+              </div>
+            )}
             {filePreviews.length > 0 && (
               <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {filePreviews.map(({ file, url }) => (

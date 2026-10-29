@@ -58,8 +58,9 @@ export async function uploadCatalogImage(
   return supabase.storage.from(IMAGE_BUCKET).getPublicUrl(filePath).data.publicUrl;
 }
 
-export async function copyCatalogImageToGallery(
+export async function copyCatalogImageToFolder(
   imageUrl: string,
+  folder: 'products' | 'combos' | 'gallery',
   itemId: string,
 ): Promise<string> {
   const marker = '/storage/v1/object/public/catalog/';
@@ -94,7 +95,14 @@ export async function copyCatalogImageToGallery(
   }[extension.toLowerCase()] ?? '');
   if (!mimeType) throw new Error('নির্বাচিত ছবির format চেনা যায়নি।');
   const file = new File([blob], `selected-image.${extension}`, { type: mimeType });
-  return uploadCatalogImage(file, 'gallery', itemId);
+  return uploadCatalogImage(file, folder, itemId);
+}
+
+export async function copyCatalogImageToGallery(
+  imageUrl: string,
+  itemId: string,
+): Promise<string> {
+  return copyCatalogImageToFolder(imageUrl, 'gallery', itemId);
 }
 
 export async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
