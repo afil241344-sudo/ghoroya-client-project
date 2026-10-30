@@ -31,10 +31,10 @@ export default function HeaderAnnouncement() {
   };
 
   return (
-    <div className="bg-gradient-to-r from-[#991b1b] via-[#b91c1c] to-[#991b1b] text-white text-xs sm:text-sm py-2 px-3 sticky top-0 z-50 shadow-md">
+    <div className="relative z-50 bg-gradient-to-r from-[#991b1b] via-[#b91c1c] to-[#991b1b] px-3 py-2 text-xs text-white shadow-md sm:text-sm">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2 text-center md:text-left">
         {/* Left message */}
-        <div className="flex items-center gap-2 font-medium justify-center">
+        <div className="hidden items-center gap-2 font-medium justify-center sm:flex">
           <span className="inline-flex items-center justify-center bg-amber-400 text-stone-900 px-2 py-0.5 rounded text-xs font-bold tracking-wide uppercase">
             সীমিত স্টক অফার
           </span>

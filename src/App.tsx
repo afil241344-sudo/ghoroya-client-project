@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from 'react';
 import HeaderAnnouncement from './components/HeaderAnnouncement';
+import Navbar from './components/Navbar';
 import HeroSlider from './components/HeroSlider';
 import HomepageImageCards from './components/HomepageImageCards';
 import ProductCarousel from './components/ProductCarousel';
@@ -125,9 +126,10 @@ export default function App() {
 
   // Store Front Landing Page (/)
   return (
-    <div className="min-h-screen bg-[#fbf9f4] text-stone-900 flex flex-col font-['Hind_Siliguri',sans-serif]">
+    <div id="store-top" className="min-h-screen bg-[#fbf9f4] text-stone-900 flex flex-col font-['Hind_Siliguri',sans-serif]">
       {/* 1. Urgency Countdown & Announcement Top Bar */}
       <HeaderAnnouncement />
+      <Navbar />
 
       <main className="flex-1">
         {/* 2. Hero Section Image Slider */}
