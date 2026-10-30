@@ -169,7 +169,9 @@ export default function App() {
         <CustomerReviews />
 
         {/* 9. Frequently Asked Questions (FAQ) Accordion */}
-        <FaqSection />
+        <div className="hidden sm:block">
+          <FaqSection />
+        </div>
       </main>
 
       {/* 10. Footer with Courier Partners & Admin portal link */}
