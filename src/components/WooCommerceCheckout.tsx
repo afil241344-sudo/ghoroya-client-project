@@ -112,12 +112,23 @@ export default function WooCommerceCheckout({
     (coupon) => coupon.code === appliedCoupon && coupon.isActive && quantity >= coupon.minQuantity,
   );
   const isFreeShippingCoupon = selectedCoupon?.discountType === 'free_shipping';
-  const deliveryCharge =
-    currentBundle?.freeDelivery || isFreeShippingCoupon
-      ? 0
-      : deliveryArea === 'dhaka'
-        ? deliverySettings?.dhakaDeliveryFee ?? 0
-        : deliverySettings?.outsideDhakaDeliveryFee ?? 0;
+  const isFreeDelivery = Boolean(currentBundle?.freeDelivery || isFreeShippingCoupon);
+  const deliveryChargeReady = isFreeDelivery || deliverySettings !== null;
+  const deliveryCharge = isFreeDelivery
+    ? 0
+    : deliverySettings
+      ? deliveryArea === 'dhaka'
+        ? deliverySettings.dhakaDeliveryFee
+        : deliverySettings.outsideDhakaDeliveryFee
+      : 0;
+  const deliveryChargeLabel = (area: 'dhaka' | 'outside_dhaka') => {
+    if (isFreeDelivery) return 'ফ্রি';
+    if (!deliverySettings) return deliverySettingsError ? 'লোড হয়নি' : 'লোড হচ্ছে...';
+    const fee = area === 'dhaka'
+      ? deliverySettings.dhakaDeliveryFee
+      : deliverySettings.outsideDhakaDeliveryFee;
+    return `৳${fee.toLocaleString('bn-BD')}`;
+  };
   const discount = selectedCoupon?.discountType === 'fixed'
     ? Math.min(selectedCoupon.discountAmount, itemSubtotal)
     : 0;
@@ -405,11 +416,7 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার ভেতরে</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || isFreeShippingCoupon
-                          ? 'ফ্রি'
-                          : deliverySettings
-                            ? `৳${deliverySettings.dhakaDeliveryFee.toLocaleString()}`
-                            : 'লোড হচ্ছে...'}
+                        {deliveryChargeLabel('dhaka')}
                       </span>
                     </label>
 
@@ -431,14 +438,15 @@ export default function WooCommerceCheckout({
                         <span className="text-xs sm:text-sm">ঢাকার বাইরে (সারাদেশ)</span>
                       </div>
                       <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {currentBundle.freeDelivery || isFreeShippingCoupon
-                          ? 'ফ্রি'
-                          : deliverySettings
-                            ? `৳${deliverySettings.outsideDhakaDeliveryFee.toLocaleString()}`
-                            : 'লোড হচ্ছে...'}
+                        {deliveryChargeLabel('outside_dhaka')}
                       </span>
                     </label>
                   </div>
+                  {deliverySettingsError && (
+                    <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      {deliverySettingsError}
+                    </p>
+                  )}
                 </div>
 
                 {/* Detailed Address */}
@@ -651,7 +659,11 @@ export default function WooCommerceCheckout({
                       <span>ডেলিভারি চার্জ ({deliveryArea === 'dhaka' ? 'ঢাকা' : 'ঢাকার বাইরে'})</span>
                     </span>
                     <span className="font-semibold text-stone-900">
-                      {deliveryCharge === 0 ? (
+                      {!deliveryChargeReady ? (
+                        <span className="font-medium text-stone-500">
+                          {deliverySettingsError ? 'চার্জ পাওয়া যায়নি' : 'লোড হচ্ছে...'}
+                        </span>
+                      ) : deliveryCharge === 0 ? (
                         <span className="text-emerald-700 font-bold">ফ্রি (৳০)</span>
                       ) : (
                         `৳${deliveryCharge}`
@@ -669,7 +681,7 @@ export default function WooCommerceCheckout({
                   <div className="flex justify-between items-baseline border-t-2 border-stone-900/10 pt-3 text-base sm:text-lg font-extrabold text-stone-950">
                     <span>সর্বমোট প্রদেয় টাকা</span>
                     <span className="text-2xl sm:text-3xl font-black text-emerald-800">
-                      ৳{totalAmount}
+                      {deliveryChargeReady ? `৳${totalAmount.toLocaleString('bn-BD')}` : '—'}
                     </span>
                   </div>
                 </div>
@@ -715,11 +727,6 @@ export default function WooCommerceCheckout({
                     অর্ডারটি সংরক্ষণ করা যায়নি: {submissionError}
                   </p>
                 )}
-                {deliverySettingsError && (
-                  <p role="alert" className="mt-4 rounded-lg bg-rose-50 p-3 text-xs text-rose-700">
-                    {deliverySettingsError}
-                  </p>
-                )}
                 <button
                   type="submit"
                   disabled={isSubmitting || !deliverySettings || isOutOfStock || exceedsAvailableStock}
@@ -733,7 +740,10 @@ export default function WooCommerceCheckout({
                   ) : (
                     <>
                       <CheckCircle2 className="w-6 h-6 text-amber-300" />
-                      <span>অর্ডার কনফার্ম করুন (৳{totalAmount})</span>
+                      <span>
+                        অর্ডার কনফার্ম করুন
+                        {deliveryChargeReady ? ` (৳${totalAmount.toLocaleString('bn-BD')})` : ''}
+                      </span>
                     </>
                   )}
                 </button>
