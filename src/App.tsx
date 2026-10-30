@@ -11,7 +11,7 @@ import WooCommerceCheckout from './components/WooCommerceCheckout';
 import CustomerReviews from './components/CustomerReviews';
 import FaqSection from './components/FaqSection';
 import OrderSuccessModal from './components/OrderSuccessModal';
-import StickyBottomMobileBar from './components/StickyBottomMobileBar';
+// import StickyBottomMobileBar from './components/StickyBottomMobileBar';
 import Footer from './components/Footer';
 import { PlacedOrder, ProductItem, ShemaiBundle } from './types';
 import { fetchAllProducts, fetchCombos } from './services/dbService';
@@ -175,8 +175,7 @@ export default function App() {
       {/* 10. Footer with Courier Partners & Admin portal link */}
       <Footer onOpenAdmin={() => navigateToRoute('admin')} />
 
-      {/* 12. Sticky Mobile Action Bar for Fast Ordering */}
-      <StickyBottomMobileBar canOrder={Boolean(selectedBundleId)} />
+      {/* Keep for future use: <StickyBottomMobileBar canOrder={Boolean(selectedBundleId)} /> */}
 
       {/* 13. Order Confirmed Invoice Modal with Confetti Celebration */}
       <OrderSuccessModal
