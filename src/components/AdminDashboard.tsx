@@ -119,6 +119,12 @@ const ORDER_STATUS_LABELS: Record<BackendOrder['status'], string> = {
 
 type OrderDateRange = 'today' | 'this-week' | 'this-month' | 'all' | 'custom';
 
+interface DeleteConfirmation {
+  title: string;
+  description: string;
+  onConfirm: () => Promise<void>;
+}
+
 function isOrderDateRange(value: string): value is OrderDateRange {
   return ['today', 'this-week', 'this-month', 'all', 'custom'].includes(value);
 }
@@ -340,6 +346,8 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   });
 
   const [notification, setNotification] = useState<string | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [catalogLoadError, setCatalogLoadError] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -374,9 +382,32 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [pendingSliderDelete, isDeletingSlider]);
 
+  useEffect(() => {
+    if (!deleteConfirmation || isConfirmingDelete) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDeleteConfirmation(null);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [deleteConfirmation, isConfirmingDelete]);
+
   const showToast = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3500);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmation || isConfirmingDelete) return;
+    setIsConfirmingDelete(true);
+    try {
+      await deleteConfirmation.onConfirm();
+      setDeleteConfirmation(null);
+    } catch (error) {
+      console.error('Could not complete the confirmed delete action:', error);
+      showToast(error instanceof Error ? error.message : 'মুছে ফেলা যায়নি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsConfirmingDelete(false);
+    }
   };
 
   const handleSliderFileChange = useCallback((file: File | null, isValid: boolean) => {
@@ -452,9 +483,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
       selectedCatalogImagePaths.includes(image.path) && !imageUsageByUrl.has(image.imageUrl)
     ));
     if (imagesToDelete.length === 0 || isDeletingCatalogImages) return;
-    if (!window.confirm(
-      `ব্যবহারে নেই এমন ${imagesToDelete.length}টি ছবি Storage থেকে স্থায়ীভাবে মুছে ফেলবেন? এই কাজ ফিরিয়ে আনা যাবে না।`,
-    )) return;
 
     setIsDeletingCatalogImages(true);
     try {
@@ -681,10 +709,13 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteOrder = async (orderId: string) => {
-    if (window.confirm(`আপনি কি নিশ্চিত যে অর্ডার #${orderId} ডিলিট করতে চান?`)) {
+    try {
       await deleteOrder(orderId);
       setOrders((prev) => prev.filter((o) => o.orderId !== orderId));
       showToast(`অর্ডার #${orderId} মুছে ফেলা হয়েছে!`);
+    } catch (error) {
+      console.error('Could not delete order:', error);
+      showToast(error instanceof Error ? error.message : 'অর্ডার মুছে ফেলা যায়নি।');
     }
   };
 
@@ -787,7 +818,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteCombo = async (combo: BackendCombo) => {
-    if (!window.confirm(`"${combo.name}" কম্বোটি মুছে ফেলবেন? পুরোনো অর্ডারের তথ্য অক্ষত থাকবে।`)) return;
     try {
       await deleteCombo(combo.id);
       setCombos((current) => current.filter((item) => item.id !== combo.id));
@@ -922,21 +952,19 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
 
   const handleDeleteProduct = async (productId: string, productName: string) => {
     const product = productsList.find((item) => item.id === productId);
-    if (window.confirm(`আপনি কি নিশ্চিত যে '${productName}' প্রোডাক্টটি মুছে ফেলতে চান?`)) {
+    try {
+      await deleteProductItem(productId);
+      setProductsList((prev) => prev.filter((p) => p.id !== productId));
       try {
-        await deleteProductItem(productId);
-        setProductsList((prev) => prev.filter((p) => p.id !== productId));
-        try {
-          if (product?.imageUrl) await deleteCatalogImage(product.imageUrl);
-          showToast(`প্রোডাক্ট '${productName}' মুছে ফেলা হয়েছে!`);
-        } catch (cleanupError) {
-          console.error('Product deleted but its Storage image could not be removed:', cleanupError);
-          showToast('প্রোডাক্ট মুছে গেছে, তবে Storage থেকে image মুছতে পারেনি।');
-        }
-      } catch (error) {
-        console.error('Could not delete product:', error);
-        showToast(error instanceof Error ? error.message : 'প্রোডাক্ট মুছে ফেলা যায়নি।');
+        if (product?.imageUrl) await deleteCatalogImage(product.imageUrl);
+        showToast(`প্রোডাক্ট '${productName}' মুছে ফেলা হয়েছে!`);
+      } catch (cleanupError) {
+        console.error('Product deleted but its Storage image could not be removed:', cleanupError);
+        showToast('প্রোডাক্ট মুছে গেছে, তবে Storage থেকে image মুছতে পারেনি।');
       }
+    } catch (error) {
+      console.error('Could not delete product:', error);
+      showToast(error instanceof Error ? error.message : 'প্রোডাক্ট মুছে ফেলা যায়নি।');
     }
   };
 
@@ -1032,7 +1060,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteCustomerReview = async (review: CustomerReviewRecord) => {
-    if (!window.confirm(`"${review.author}"-এর রিভিউ স্থায়ীভাবে মুছে ফেলবেন?`)) return;
     try {
       await deleteCustomerReview(review.id);
       setCustomerReviews((current) => current.filter((item) => item.id !== review.id));
@@ -1066,7 +1093,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteCoupon = async (coupon: DBCoupon) => {
-    if (!window.confirm(`আপনি কি ${coupon.code} কুপনটি মুছে ফেলতে চান?`)) return;
     try {
       await deleteCoupon(coupon.id);
       setCoupons((current) => current.filter((item) => item.id !== coupon.id));
@@ -1315,7 +1341,6 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
   };
 
   const handleDeleteGalleryCard = async (card: HomepageImageCard) => {
-    if (!window.confirm('এই ছবির card মুছে ফেলবেন?')) return;
     try {
       await deleteHomepageImageCard(card.id);
       setHomepageImageCards((current) => current.filter((item) => item.id !== card.id));
@@ -2284,7 +2309,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleDeleteOrder(order.orderId)}
+                        onClick={() => setDeleteConfirmation({
+                          title: `অর্ডার #${order.orderId} মুছে ফেলবেন?`,
+                          description: 'এই অর্ডারটি admin list থেকে স্থায়ীভাবে সরানো হবে।',
+                          onConfirm: () => handleDeleteOrder(order.orderId),
+                        })}
                         className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
                         aria-label={`অর্ডার ${order.orderId} মুছুন`}
                       >
@@ -2640,7 +2669,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                             </a>
 
                             <button
-                              onClick={() => handleDeleteOrder(order.orderId)}
+                              onClick={() => setDeleteConfirmation({
+                                title: `অর্ডার #${order.orderId} মুছে ফেলবেন?`,
+                                description: 'এই অর্ডারটি admin list থেকে স্থায়ীভাবে সরানো হবে।',
+                                onConfirm: () => handleDeleteOrder(order.orderId),
+                              })}
                               className="inline-flex p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                               title="অর্ডার মুছুন"
                             >
@@ -2853,7 +2886,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </button>
                       <button
                         type="button"
-                        onClick={() => void handleDeleteCombo(combo)}
+                        onClick={() => setDeleteConfirmation({
+                          title: `"${combo.name}" কম্বোটি মুছে ফেলবেন?`,
+                          description: 'কম্বোটি storefront থেকে সরবে। পুরোনো অর্ডারের তথ্য অক্ষত থাকবে।',
+                          onConfirm: () => handleDeleteCombo(combo),
+                        })}
                         aria-label={`${combo.name} মুছুন`}
                         className="rounded-xl border border-rose-200 px-3 text-rose-600 hover:bg-rose-50"
                       >
@@ -3240,7 +3277,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDeleteProduct(product.id, product.name)}
+                        onClick={() => setDeleteConfirmation({
+                          title: `“${product.name}” প্রোডাক্টটি মুছে ফেলবেন?`,
+                          description: 'প্রোডাক্টটি catalog থেকে সরানো হবে। এই কাজ ফিরিয়ে আনা যাবে না।',
+                          onConfirm: () => handleDeleteProduct(product.id, product.name),
+                        })}
                         className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
                         aria-label={`${product.name} মুছুন`}
                       >
@@ -3382,7 +3423,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                           </button>
 
                           <button
-                            onClick={() => handleDeleteProduct(prod.id, prod.name)}
+                            onClick={() => setDeleteConfirmation({
+                              title: `“${prod.name}” প্রোডাক্টটি মুছে ফেলবেন?`,
+                              description: 'প্রোডাক্টটি catalog থেকে সরানো হবে। এই কাজ ফিরিয়ে আনা যাবে না।',
+                              onConfirm: () => handleDeleteProduct(prod.id, prod.name),
+                            })}
                             className="inline-flex p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                             title="মুছে ফেলুন"
                           >
@@ -4043,7 +4088,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         )}
                         <button
                           type="button"
-                          onClick={() => void handleDeleteCustomerReview(review)}
+                          onClick={() => setDeleteConfirmation({
+                            title: 'রিভিউটি স্থায়ীভাবে মুছে ফেলবেন?',
+                            description: `"${review.author}"-এর রিভিউ ও সংযুক্ত screenshot মুছে যাবে।`,
+                            onConfirm: () => handleDeleteCustomerReview(review),
+                          })}
                           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-rose-200 px-3 py-2 text-[11px] font-bold text-rose-700 hover:bg-rose-50"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -4164,7 +4213,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDeleteCoupon(coupon)}
+                          onClick={() => setDeleteConfirmation({
+                            title: `${coupon.code} কুপনটি মুছে ফেলবেন?`,
+                            description: 'কুপনটি আর checkout-এ ব্যবহার করা যাবে না।',
+                            onConfirm: () => handleDeleteCoupon(coupon),
+                          })}
                           className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"
                           aria-label={`${coupon.code} মুছুন`}
                         >
@@ -4270,7 +4323,20 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   )}
                   <button
                     type="button"
-                    onClick={() => void handleDeleteSelectedCatalogImages()}
+                    onClick={() => {
+                      const deletableSelectedCount = catalogImages.filter((image) => (
+                        selectedCatalogImagePaths.includes(image.path) && !imageUsageByUrl.has(image.imageUrl)
+                      )).length;
+                      if (!canSafelyDeleteCatalogImages || deletableSelectedCount === 0) {
+                        void handleDeleteSelectedCatalogImages();
+                        return;
+                      }
+                      setDeleteConfirmation({
+                        title: `${deletableSelectedCount}টি ছবি স্থায়ীভাবে মুছে ফেলবেন?`,
+                        description: 'ছবিগুলো Storage থেকে মুছে যাবে। এই কাজ ফিরিয়ে আনা যাবে না।',
+                        onConfirm: handleDeleteSelectedCatalogImages,
+                      });
+                    }}
                     disabled={
                       isDeletingCatalogImages
                       || !canSafelyDeleteCatalogImages
@@ -4519,7 +4585,11 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                         </button>
                         <button
                           type="button"
-                          onClick={() => void handleDeleteGalleryCard(card)}
+                          onClick={() => setDeleteConfirmation({
+                            title: 'ছবির card মুছে ফেলবেন?',
+                            description: `"${card.altText}" homepage gallery থেকে সরানো হবে।`,
+                            onConfirm: () => handleDeleteGalleryCard(card),
+                          })}
                           aria-label="ছবির card মুছুন"
                           className="ml-auto rounded-lg border border-rose-100 p-2 text-rose-600 hover:bg-rose-50"
                         >
@@ -4890,6 +4960,62 @@ export default function AdminDashboard({ onNavigateToStore, onClose }: AdminDash
                   </button>
                 </form>
               )}
+            </section>
+          </div>
+        )}
+
+        {deleteConfirmation && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-stone-950/55 p-4 backdrop-blur-sm"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !isConfirmingDelete) {
+                setDeleteConfirmation(null);
+              }
+            }}
+          >
+            <section
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-confirmation-title"
+              aria-describedby="delete-confirmation-description"
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-white/60 bg-white shadow-2xl"
+            >
+              <div className="flex items-start gap-4 p-5 sm:p-6">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+                  <Trash2 className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <h3 id="delete-confirmation-title" className="text-base font-black text-stone-900">
+                    {deleteConfirmation.title}
+                  </h3>
+                  <p id="delete-confirmation-description" className="mt-1.5 text-sm leading-relaxed text-stone-600">
+                    {deleteConfirmation.description}
+                  </p>
+                  <p className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    মুছে ফেললে এটি ফিরিয়ে আনা যাবে না।
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-stone-100 bg-stone-50/70 p-4 sm:flex-row sm:justify-end sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmation(null)}
+                  disabled={isConfirmingDelete}
+                  className="rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-xs font-bold text-stone-700 transition hover:bg-stone-100 disabled:opacity-50"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmDelete()}
+                  disabled={isConfirmingDelete}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {isConfirmingDelete ? 'মুছে ফেলা হচ্ছে...' : 'হ্যাঁ, মুছে ফেলুন'}
+                </button>
+              </div>
             </section>
           </div>
         )}
