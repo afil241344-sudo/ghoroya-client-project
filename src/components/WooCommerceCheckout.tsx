@@ -1,5 +1,5 @@
 import { useState, useId, useEffect } from 'react';
-import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle, Image as ImageIcon, Minus, Plus } from 'lucide-react';
 import { DBCoupon, ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import {
   fetchActiveCoupons,
@@ -494,15 +494,15 @@ export default function WooCommerceCheckout({
             {/* Right 5 Columns: WooCommerce Order Review & Payment Selection */}
             <div className="lg:col-span-5 space-y-5">
               {/* WooCommerce Order Review Card */}
-              <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-stone-200">
-                <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-4">
+              <div className="min-w-0 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-4 flex min-w-0 items-center justify-between gap-2 border-b border-stone-200 pb-3">
                   <h3 className="text-lg font-bold text-stone-900 flex items-center gap-2">
                     <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-extrabold">
                       ২
                     </span>
-                    <span>আপনার অর্ডার সারাংশ</span>
+                    <span className="truncate">আপনার অর্ডার সারাংশ</span>
                   </h3>
-                  <span className="text-xs text-stone-500">কার্ট রিভিউ</span>
+                  <span className="hidden shrink-0 text-xs text-stone-500 sm:inline">কার্ট রিভিউ</span>
                 </div>
 
                 {/* Selected Bundle Quick Dropdown/Switcher */}
@@ -513,7 +513,7 @@ export default function WooCommerceCheckout({
                   <select
                     value={selectedBundleId}
                     onChange={(e) => onSelectBundle(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-[#fdfbf7] text-xs sm:text-sm font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                    className="min-h-11 w-full min-w-0 rounded-xl border border-stone-300 bg-[#fdfbf7] px-3 py-2 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 sm:text-sm"
                   >
                     {bundles.map((b) => (
                       <option
@@ -529,9 +529,9 @@ export default function WooCommerceCheckout({
                 </div>
 
                 {/* Product Item Row */}
-                <div className="flex items-center justify-between gap-3 p-3 bg-stone-50 rounded-xl border border-stone-200/80 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 border border-stone-200">
+                <div className="mb-4 flex min-w-0 flex-col gap-3 rounded-xl border border-stone-200/80 bg-stone-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-stone-200">
                       {currentBundle.imageUrl ? (
                         <img src={currentBundle.imageUrl} alt={currentBundle.name} className="h-full w-full object-cover" />
                       ) : (
@@ -540,8 +540,8 @@ export default function WooCommerceCheckout({
                         </div>
                       )}
                     </div>
-                    <div>
-                      <h4 className="font-bold text-stone-900 text-xs sm:text-sm">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="break-words text-xs font-bold text-stone-900 sm:text-sm">
                         {currentBundle.name}
                       </h4>
                       <p className="text-xs text-stone-500">{currentBundle.weight}</p>
@@ -552,38 +552,41 @@ export default function WooCommerceCheckout({
                   </div>
 
                   {/* Quantity Controller */}
-                  <div className="flex items-center border border-stone-300 rounded-lg bg-white overflow-hidden shadow-xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuantity(Math.max(1, quantity - 1));
-                        setSubmissionError(null);
-                      }}
-                      disabled={quantity <= 1 || isSubmitting}
-                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="পরিমাণ কমান"
-                    >
-                      -
-                    </button>
-                    <span className="px-3 py-1 font-bold text-xs sm:text-sm text-stone-900 border-x border-stone-200">
-                      {quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuantity((currentQuantity) => currentQuantity + 1);
-                        setSubmissionError(null);
-                      }}
-                      disabled={
-                        isSubmitting ||
-                        isOutOfStock ||
-                        (availableStock !== undefined && quantity >= availableStock)
-                      }
-                      className="px-2.5 py-1 text-stone-600 hover:bg-stone-100 font-bold text-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                      aria-label="পরিমাণ বাড়ান"
-                    >
-                      +
-                    </button>
+                  <div className="flex w-full items-center justify-between sm:w-auto sm:justify-start">
+                    <span className="text-xs font-semibold text-stone-600 sm:hidden">পরিমাণ</span>
+                    <div className="flex shrink-0 items-center overflow-hidden rounded-xl border border-stone-300 bg-white shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuantity(Math.max(1, quantity - 1));
+                          setSubmissionError(null);
+                        }}
+                        disabled={quantity <= 1 || isSubmitting}
+                        className="flex h-11 w-11 items-center justify-center text-stone-700 transition-colors hover:bg-stone-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:text-stone-300 sm:h-10 sm:w-10"
+                        aria-label="পরিমাণ কমান"
+                      >
+                        <Minus className="h-4 w-4" strokeWidth={2.5} />
+                      </button>
+                      <span className="flex h-11 min-w-12 items-center justify-center border-x border-stone-200 px-2 text-sm font-bold text-stone-900 sm:h-10">
+                        {quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setQuantity((currentQuantity) => currentQuantity + 1);
+                          setSubmissionError(null);
+                        }}
+                        disabled={
+                          isSubmitting ||
+                          isOutOfStock ||
+                          (availableStock !== undefined && quantity >= availableStock)
+                        }
+                        className="flex h-11 w-11 items-center justify-center text-emerald-800 transition-colors hover:bg-emerald-50 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:text-stone-300 sm:h-10 sm:w-10"
+                        aria-label="পরিমাণ বাড়ান"
+                      >
+                        <Plus className="h-5 w-5" strokeWidth={2.5} />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <p className={`-mt-2 mb-4 text-right text-xs font-semibold ${
