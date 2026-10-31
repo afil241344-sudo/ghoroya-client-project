@@ -339,6 +339,57 @@ export default function WooCommerceCheckout({
               </div>
 
               <div className="space-y-4">
+                {/* Delivery Area Selection (Moved to top) */}
+                <div>
+                  <label className="block text-xs sm:text-sm font-bold text-stone-800 mb-2">
+                    ডেলিভারি এরিয়া নির্বাচন করুন <span className="text-rose-600">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label
+                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
+                      style={{ borderColor: deliveryArea === 'dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'dhaka' ? '700' : '400', color: deliveryArea === 'dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="deliveryArea"
+                          checked={deliveryArea === 'dhaka'}
+                          onChange={() => setDeliveryArea('dhaka')}
+                          className="accent-emerald-600 w-4 h-4"
+                        />
+                        <span className="text-xs sm:text-sm">ঢাকার ভেতরে</span>
+                      </div>
+                      <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
+                        {deliveryChargeLabel('dhaka')}
+                      </span>
+                    </label>
+
+                    <label
+                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
+                      style={{ borderColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'outside_dhaka' ? '700' : '400', color: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="deliveryArea"
+                          checked={deliveryArea === 'outside_dhaka'}
+                          onChange={() => setDeliveryArea('outside_dhaka')}
+                          className="accent-emerald-600 w-4 h-4"
+                        />
+                        <span className="text-xs sm:text-sm">ঢাকার বাইরে (সারাদেশ)</span>
+                      </div>
+                      <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
+                        {deliveryChargeLabel('outside_dhaka')}
+                      </span>
+                    </label>
+                  </div>
+                  {deliverySettingsError && (
+                    <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                      {deliverySettingsError}
+                    </p>
+                  )}
+                </div>
+
                 {/* Full Name */}
                 <div>
                   <label htmlFor={`${formId}-name`} className="block text-xs sm:text-sm font-bold text-stone-800 mb-1">
@@ -388,57 +439,6 @@ export default function WooCommerceCheckout({
                     <p className="text-xs text-rose-600 mt-1 flex items-center gap-1 font-medium">
                       <AlertCircle className="w-3.5 h-3.5" />
                       {formErrors.phone}
-                    </p>
-                  )}
-                </div>
-
-                {/* Delivery Area Selection */}
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-stone-800 mb-2">
-                    ডেলিভারি এরিয়া নির্বাচন করুন <span className="text-rose-600">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label
-                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
-                      style={{ borderColor: deliveryArea === 'dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'dhaka' ? '700' : '400', color: deliveryArea === 'dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="deliveryArea"
-                          checked={deliveryArea === 'dhaka'}
-                          onChange={() => setDeliveryArea('dhaka')}
-                          className="accent-emerald-600 w-4 h-4"
-                        />
-                        <span className="text-xs sm:text-sm">ঢাকার ভেতরে</span>
-                      </div>
-                      <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {deliveryChargeLabel('dhaka')}
-                      </span>
-                    </label>
-
-                    <label
-                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
-                      style={{ borderColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'outside_dhaka' ? '700' : '400', color: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="deliveryArea"
-                          checked={deliveryArea === 'outside_dhaka'}
-                          onChange={() => setDeliveryArea('outside_dhaka')}
-                          className="accent-emerald-600 w-4 h-4"
-                        />
-                        <span className="text-xs sm:text-sm">ঢাকার বাইরে (সারাদেশ)</span>
-                      </div>
-                      <span className="text-xs font-bold bg-white px-2 py-0.5 rounded shadow-xs border border-stone-200">
-                        {deliveryChargeLabel('outside_dhaka')}
-                      </span>
-                    </label>
-                  </div>
-                  {deliverySettingsError && (
-                    <p role="alert" className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-                      {deliverySettingsError}
                     </p>
                   )}
                 </div>
