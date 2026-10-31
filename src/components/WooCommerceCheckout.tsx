@@ -1,4 +1,4 @@
-import { useState, useId, useEffect } from 'react';
+﻿import { useState, useId, useEffect } from 'react';
 import { ShieldCheck, Truck, Lock, CheckCircle2, ShoppingBag, Tag, AlertCircle, Image as ImageIcon, Minus, Plus } from 'lucide-react';
 import { DBCoupon, ShemaiBundle, OrderFormData, PlacedOrder } from '../types';
 import {
@@ -304,16 +304,16 @@ export default function WooCommerceCheckout({
     <section id="checkout-section" className="scroll-mt-24 py-12 sm:py-16 bg-[#f7f4ec] border-b border-amber-900/10">
       <div className="max-w-6xl mx-auto px-4">
         {/* Checkout Header Banner */}
-        <div className="bg-gradient-to-r from-emerald-800 via-emerald-700 to-emerald-800 text-white p-5 rounded-2xl shadow-md mb-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4 border border-emerald-600/40">
+        <div className="text-white p-5 rounded-2xl shadow-md mb-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4 border" style={{ background: 'linear-gradient(to right, var(--brand-forest-dark), var(--brand-forest), var(--brand-forest-dark))', borderColor: 'color-mix(in srgb, var(--brand-forest-light) 40%, transparent)' }}>
           <div>
-            <div className="inline-flex items-center gap-2 bg-emerald-950/40 text-amber-300 text-xs font-bold px-3 py-1 rounded-full mb-1 border border-emerald-500/30">
+            <div className="inline-flex items-center gap-2 bg-black/30 text-xs font-bold px-3 py-1 rounded-full mb-1 border border-white/20" style={{ color: 'var(--brand-amber)' }}>
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>১-পেজ এক্সপ্রেস চেকআউট (WordPress & WooCommerce Style)</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
               অর্ডার করতে নিচের তথ্যগুলো দিয়ে সম্পূর্ণ করুন
             </h2>
-            <p className="text-emerald-100 text-xs sm:text-sm mt-0.5">
+            <p className="text-xs sm:text-sm mt-0.5" style={{ color: 'var(--brand-forest-light)' }}>
               কোনো অগ্রিম পেমেন্টের ঝামেলা নেই — পণ্য হাতে পেয়ে চেক করে টাকা দিন!
             </p>
           </div>
@@ -330,7 +330,7 @@ export default function WooCommerceCheckout({
             <div className="lg:col-span-7 bg-white p-5 sm:p-7 rounded-2xl shadow-sm border border-stone-200">
               <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-5">
                 <h3 className="text-lg font-bold text-stone-900 flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-extrabold">
+                  <span className="w-7 h-7 rounded-full text-sm font-extrabold flex items-center justify-center" style={{ backgroundColor: 'var(--brand-forest-light)', color: 'var(--brand-forest)' }}>
                     ১
                   </span>
                   <span>ডেলিভারি ও যোগাযোগের ঠিকানা</span>
@@ -399,11 +399,8 @@ export default function WooCommerceCheckout({
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label
-                      className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                        deliveryArea === 'dhaka'
-                          ? 'border-emerald-600 bg-emerald-50/60 font-bold text-emerald-950'
-                          : 'border-stone-200 hover:border-stone-300 bg-white text-stone-700'
-                      }`}
+                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
+                      style={{ borderColor: deliveryArea === 'dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'dhaka' ? '700' : '400', color: deliveryArea === 'dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
                     >
                       <div className="flex items-center gap-2">
                         <input
@@ -421,11 +418,8 @@ export default function WooCommerceCheckout({
                     </label>
 
                     <label
-                      className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                        deliveryArea === 'outside_dhaka'
-                          ? 'border-emerald-600 bg-emerald-50/60 font-bold text-emerald-950'
-                          : 'border-stone-200 hover:border-stone-300 bg-white text-stone-700'
-                      }`}
+                      className="flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all"
+                      style={{ borderColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest)' : '#e7e5e4', backgroundColor: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-light)' : 'white', fontWeight: deliveryArea === 'outside_dhaka' ? '700' : '400', color: deliveryArea === 'outside_dhaka' ? 'var(--brand-forest-dark)' : '#44403c' }}
                     >
                       <div className="flex items-center gap-2">
                         <input
@@ -463,7 +457,7 @@ export default function WooCommerceCheckout({
                     className={`w-full px-3.5 py-2.5 rounded-xl border text-sm sm:text-base transition-colors focus:outline-none focus:ring-2 ${
                       formErrors.address
                         ? 'border-rose-500 focus:ring-rose-200 bg-rose-50/20'
-                        : 'border-stone-300 focus:border-emerald-600 focus:ring-emerald-100 bg-white'
+                        : 'border-stone-300 focus:border-[var(--brand-forest)] focus:ring-[color-mix(in_srgb,var(--brand-forest-light)_80%,transparent)] bg-white'
                     }`}
                   ></textarea>
                   {formErrors.address && (
@@ -485,7 +479,7 @@ export default function WooCommerceCheckout({
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="যেমন: সকাল ১০টার পর ডেলিভারি করবেন"
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100 text-xs sm:text-sm bg-white"
+                    className="w-full px-3.5 py-2 rounded-xl border border-stone-300 focus:border-[var(--brand-forest)] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--brand-forest-light)_80%,transparent)] text-xs sm:text-sm bg-white"
                   />
                 </div>
               </div>
@@ -497,7 +491,7 @@ export default function WooCommerceCheckout({
               <div className="min-w-0 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm sm:p-6">
                 <div className="mb-4 flex min-w-0 items-center justify-between gap-2 border-b border-stone-200 pb-3">
                   <h3 className="text-lg font-bold text-stone-900 flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-sm font-extrabold">
+                    <span className="w-7 h-7 rounded-full text-sm font-extrabold flex items-center justify-center" style={{ backgroundColor: 'var(--brand-forest-light)', color: 'var(--brand-forest)' }}>
                       ২
                     </span>
                     <span className="truncate">আপনার অর্ডার সারাংশ</span>
@@ -513,7 +507,7 @@ export default function WooCommerceCheckout({
                   <select
                     value={selectedBundleId}
                     onChange={(e) => onSelectBundle(e.target.value)}
-                    className="min-h-11 w-full min-w-0 rounded-xl border border-stone-300 bg-[#fdfbf7] px-3 py-2 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-200 sm:text-sm"
+                    className="min-h-11 w-full min-w-0 rounded-xl border border-stone-300 bg-[#fdfbf7] px-3 py-2 text-xs font-semibold text-stone-900 focus:outline-none focus:ring-2 focus:ring-[var(--brand-forest-light)] sm:text-sm"
                   >
                     {bundles.map((b) => (
                       <option
@@ -545,7 +539,7 @@ export default function WooCommerceCheckout({
                         {currentBundle.name}
                       </h4>
                       <p className="text-xs text-stone-500">{currentBundle.weight}</p>
-                      <span className="text-xs font-extrabold text-emerald-700">
+                      <span className="text-xs font-extrabold" style={{ color: 'var(--brand-forest)' }}>
                         ৳{currentBundle.salePrice}
                       </span>
                     </div>
@@ -562,7 +556,7 @@ export default function WooCommerceCheckout({
                           setSubmissionError(null);
                         }}
                         disabled={quantity <= 1 || isSubmitting}
-                        className="flex h-11 w-11 items-center justify-center text-stone-700 transition-colors hover:bg-stone-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:text-stone-300 sm:h-10 sm:w-10"
+                        className="flex h-11 w-11 items-center justify-center text-stone-700 transition-colors hover:bg-stone-100 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--brand-forest)] disabled:cursor-not-allowed disabled:text-stone-300 sm:h-10 sm:w-10"
                         aria-label="পরিমাণ কমান"
                       >
                         <Minus className="h-4 w-4" strokeWidth={2.5} />
@@ -589,9 +583,7 @@ export default function WooCommerceCheckout({
                     </div>
                   </div>
                 </div>
-                <p className={`-mt-2 mb-4 text-right text-xs font-semibold ${
-                  isOutOfStock ? 'text-rose-700' : 'text-emerald-700'
-                }`}>
+                <p className="-mt-2 mb-4 text-right text-xs font-semibold" style={{ color: isOutOfStock ? '#be123c' : 'var(--brand-leaf-dark)' }}>
                   {isOutOfStock
                     ? 'এই পণ্যটি বর্তমানে স্টকে নেই'
                     : availableStock !== undefined
@@ -602,9 +594,9 @@ export default function WooCommerceCheckout({
                 {/* Coupon Code Section */}
                 <div className="mb-4">
                   {appliedCoupon ? (
-                    <div className="flex items-center justify-between bg-emerald-50 text-emerald-900 p-2.5 rounded-xl border border-emerald-200 text-xs font-medium">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl border text-xs font-medium" style={{ backgroundColor: 'var(--brand-forest-light)', color: 'var(--brand-forest-dark)', borderColor: 'color-mix(in srgb, var(--brand-forest) 30%, transparent)' }}>
                       <div className="flex items-center gap-1.5">
-                        <Tag className="w-4 h-4 text-emerald-600" />
+                        <Tag className="w-4 h-4" style={{ color: 'var(--brand-forest)' }} />
                         <span>
                           কুপন <strong>{appliedCoupon}</strong> সক্রিয়!
                           {selectedCoupon?.discountType === 'fixed'
@@ -628,7 +620,7 @@ export default function WooCommerceCheckout({
                           value={couponInput}
                           onChange={(e) => setCouponInput(e.target.value)}
                           placeholder="আপনার কুপন কোড লিখুন"
-                          className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-emerald-500 uppercase"
+                          className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-300 focus:outline-none focus:ring-1 focus:ring-[var(--brand-forest)] uppercase"
                         />
                         <button
                           type="button"
@@ -667,7 +659,7 @@ export default function WooCommerceCheckout({
                           {deliverySettingsError ? 'চার্জ পাওয়া যায়নি' : 'লোড হচ্ছে...'}
                         </span>
                       ) : deliveryCharge === 0 ? (
-                        <span className="text-emerald-700 font-bold">ফ্রি (৳০)</span>
+                        <span className="font-bold" style={{ color: 'var(--brand-leaf-dark)' }}>ফ্রি (৳০)</span>
                       ) : (
                         `৳${deliveryCharge}`
                       )}
@@ -683,7 +675,7 @@ export default function WooCommerceCheckout({
 
                   <div className="flex justify-between items-baseline border-t-2 border-stone-900/10 pt-3 text-base sm:text-lg font-extrabold text-stone-950">
                     <span>সর্বমোট প্রদেয় টাকা</span>
-                    <span className="text-2xl sm:text-3xl font-black text-emerald-800">
+                    <span className="text-2xl sm:text-3xl font-black" style={{ color: 'var(--brand-forest)' }}>
                       {deliveryChargeReady ? `৳${totalAmount.toLocaleString('bn-BD')}` : '—'}
                     </span>
                   </div>
@@ -693,7 +685,7 @@ export default function WooCommerceCheckout({
               {/* Payment Method Selector (WooCommerce Style) */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-200">
                 <h4 className="text-sm font-bold text-stone-900 mb-3 flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-emerald-600" />
+                  <Lock className="w-4 h-4" style={{ color: 'var(--brand-forest)' }} />
                   <span>পেমেন্ট পদ্ধতি</span>
                 </h4>
 
@@ -733,7 +725,7 @@ export default function WooCommerceCheckout({
                 <button
                   type="submit"
                   disabled={isSubmitting || !deliverySettings || isOutOfStock || exceedsAvailableStock}
-                  className="w-full mt-5 bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-700 hover:to-rose-700 text-white font-extrabold text-base sm:text-lg py-4 px-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform active:scale-98 flex items-center justify-center gap-2 cursor-pointer border border-red-400/40"
+                  className="w-full mt-5 text-white font-extrabold text-base sm:text-lg py-4 px-6 rounded-xl shadow-xl hover:shadow-2xl transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 border border-emerald-500/30" style={{ background: "linear-gradient(135deg, var(--brand-forest) 0%, var(--brand-forest-dark) 100%)", boxShadow: "0 10px 25px -5px color-mix(in srgb, var(--brand-forest) 40%, transparent)" }} onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "linear-gradient(135deg, var(--brand-forest-dark) 0%, #0d2a13 100%)"; }} onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "linear-gradient(135deg, var(--brand-forest) 0%, var(--brand-forest-dark) 100%)"; }}
                 >
                   {isSubmitting ? (
                     <div className="flex items-center gap-2">

@@ -1,6 +1,25 @@
 @import "tailwindcss";
 
+/* ─── Brand Color Tokens (extracted from logo 4-color palette) ─────────────
+ * Forest Green  #1d5c2a  — primary: nav CTA, selected states, headers
+ * Golden Amber  #c8912e  — secondary: CTA buttons, price highlights, badges
+ * Leaf Green    #5a9e2a  — tertiary: positive states, free-delivery, stock ok
+ * ─────────────────────────────────────────────────────────────────────────── */
 @layer base {
+  :root {
+    --brand-forest:       #1d5c2a;
+    --brand-forest-dark:  #154020;
+    --brand-forest-light: #e8f5eb;
+
+    --brand-amber:        #c8912e;
+    --brand-amber-dark:   #a5771f;
+    --brand-amber-light:  #fdf3e0;
+
+    --brand-leaf:         #5a9e2a;
+    --brand-leaf-dark:    #447d1f;
+    --brand-leaf-light:   #edf7e3;
+  }
+
   html {
     scroll-behavior: smooth;
     font-family: 'Hind Siliguri', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -101,9 +120,9 @@
   background: #fbf9f4;
 }
 ::-webkit-scrollbar-thumb {
-  background: #d97706;
+  background: var(--brand-amber);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #b45309;
+  background: var(--brand-amber-dark);
 }
