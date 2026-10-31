@@ -308,7 +308,7 @@ export default function WooCommerceCheckout({
           <div>
             <div className="inline-flex items-center gap-2 bg-black/30 text-xs font-bold px-3 py-1 rounded-full mb-1 border border-white/20" style={{ color: 'var(--brand-amber)' }}>
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>১-পেজ এক্সপ্রেস চেকআউট (WordPress & WooCommerce Style)</span>
+              <span>১-পেজ এক্সপ্রেস চেকআউট (Heaven Studio)</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
               অর্ডার করতে নিচের তথ্যগুলো দিয়ে সম্পূর্ণ করুন
@@ -320,7 +320,7 @@ export default function WooCommerceCheckout({
 
           <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3.5 py-2 rounded-xl border border-white/20 text-xs text-amber-200">
             <ShieldCheck className="w-4 h-4 text-amber-300 shrink-0" />
-            <span className="font-semibold">১০০% নিরাপদ ডেলিভারি</span>
+            <span className="font-semibold font-sans">১০০% নিরাপদ ডেলিভারি</span>
           </div>
         </div>
 
