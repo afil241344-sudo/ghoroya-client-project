@@ -1,4 +1,4 @@
-import { Check, Flame, Gift, Sparkles, ArrowRight, Image as ImageIcon, Package, RefreshCw } from 'lucide-react';
+﻿import { Check, Flame, Gift, Sparkles, ArrowRight, Image as ImageIcon, Package, RefreshCw } from 'lucide-react';
 import { ShemaiBundle } from '../types';
 import { scrollToCheckout } from '../utils/scrollToCheckout';
 
@@ -113,22 +113,43 @@ export default function BundleSelector({
                     : undefined,
                 }}
               >
-                {/* Top Badge */}
+                {/* Top Floating Badge */}
                 {bundle.badge && (
-                  <div className="absolute -top-3.5 left-1/2 transform -translate-x-1/2 z-20">
-                    <span
-                      className="text-white text-xs font-bold px-3 py-1 rounded-full shadow-md flex items-center gap-1 whitespace-nowrap"
-                      style={{ backgroundColor: bundle.badgeColor || 'var(--brand-amber)' }}
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20">
+                    <div
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-bold tracking-wide whitespace-nowrap shadow-md border"
+                      style={
+                        bundle.popular
+                          ? {
+                              backgroundColor: '#ffffff',
+                              color: 'var(--brand-forest-dark)',
+                              borderColor: 'var(--brand-forest)',
+                              boxShadow: '0 4px 14px rgba(29, 92, 42, 0.15)',
+                            }
+                          : bundle.freeDelivery
+                          ? {
+                              backgroundColor: '#ffffff',
+                              color: 'var(--brand-leaf-dark)',
+                              borderColor: 'var(--brand-leaf)',
+                              boxShadow: '0 4px 14px rgba(90, 158, 42, 0.15)',
+                            }
+                          : {
+                              backgroundColor: '#ffffff',
+                              color: 'var(--brand-amber-dark)',
+                              borderColor: 'var(--brand-amber)',
+                              boxShadow: '0 4px 14px rgba(200, 145, 46, 0.15)',
+                            }
+                      }
                     >
                       {bundle.popular ? (
-                        <Flame className="w-3 h-3 fill-current text-yellow-200" />
+                        <Flame className="w-3.5 h-3.5 fill-current" style={{ color: 'var(--brand-amber)' }} />
                       ) : bundle.freeDelivery ? (
-                        <Gift className="w-3 h-3" />
+                        <Gift className="w-3.5 h-3.5" style={{ color: 'var(--brand-leaf)' }} />
                       ) : (
-                        <Sparkles className="w-3 h-3" />
+                        <Sparkles className="w-3.5 h-3.5" style={{ color: 'var(--brand-amber)' }} />
                       )}
-                      <span>{bundle.badge}</span>
-                    </span>
+                      <span className="font-extrabold">{bundle.badge}</span>
+                    </div>
                   </div>
                 )}
 
